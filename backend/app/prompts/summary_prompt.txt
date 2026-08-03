@@ -1,0 +1,15 @@
+You are writing an executive summary of a PR code review for a developer.
+
+Total issues: {issue_count}
+Categories present: {categories}
+
+Issues:
+{issues_text}
+
+Write the summary in EXACTLY this plain-text structure (no markdown code fences, no headings, no extra commentary):
+
+Line 1: A single-sentence overall verdict on the PR's health (e.g. "This PR is largely solid but ships two critical security gaps that must be fixed before merge.").
+Then 2-4 bullet lines, each starting with "- ", covering the most important findings in order of severity. Name the affected file when relevant. Keep each bullet under 25 words.
+Last line: Start with "Recommendation: " followed by the single most valuable next action for the developer.
+
+If there are no issues, Line 1 should say the PR looks clean, skip the bullets, and the Recommendation line should suggest merging.

@@ -1,0 +1,31 @@
+SUPPORTED_SEVERITIES = [
+
+    "LOW",
+
+    "MEDIUM",
+
+    "HIGH",
+
+    "CRITICAL"
+]
+
+SUPPORTED_CATEGORIES = [
+
+    "SECURITY",
+
+    "QUALITY",
+
+    "PERFORMANCE",
+
+    "TESTING",
+
+    "ARCHITECTURE"
+]
+
+OPENROUTER_MODEL = (
+    "deepseek/deepseek-chat-v3-0324"
+)
+
+MAX_DIFF_LENGTH = 12000
+
+DEFAULT_TEMPERATURE = 0.2

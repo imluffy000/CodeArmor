@@ -1,0 +1,26 @@
+Review this pull request diff for performance issues.
+
+Check for:
+- N+1 queries or redundant database calls
+- Inefficient loops or repeated work
+- Missing caching where appropriate
+- Blocking I/O in async paths
+- Large payloads or unbounded memory use
+- Expensive operations in hot paths
+
+Return a STRICT JSON array only. Each item must have:
+- file: the filename or path
+- severity: LOW|MEDIUM|HIGH|CRITICAL
+- category: PERFORMANCE
+- issue: a clear description of the problem
+- suggestion: a clear description of how to resolve the problem
+- code_snippet: the exact original code snippet containing the issue
+- suggestion_snippet: the COMPLETE corrected code that fully resolves the issue (use raw string, no markdown fence blocks inside this JSON value). This must be a self-contained, copy-paste-ready fix:
+  * Include any required import statements at the top (e.g. if the fix uses the os module, include "import os")
+  * Include ALL lines that must change, not just one fragment — if the fix touches multiple places in the file, show every changed usage
+  * Show the full corrected function or block, not an isolated line, so the developer can apply it without guessing the surrounding context
+
+If no issues are found, return [].
+
+Diff:
+{diff}
