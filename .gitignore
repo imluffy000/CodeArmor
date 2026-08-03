@@ -41,5 +41,23 @@ backend/node_modules/
 *.egg-info/
 
 
+# Node
+node_modules/
+frontend/node_modules/
 
+# Build
+dist/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
 
