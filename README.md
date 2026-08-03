@@ -87,6 +87,24 @@ DATABASE_PATH=app_data.db
 - `SESSION_SECRET` should be a strong secret in production.
 - `STATIC_ANALYSIS_ROOT` can be exported in the shell if you want the backend to run the static-analysis pass on a repository root.
 
+### GitHub OAuth App settings
+
+If you are using GitHub login, configure the GitHub OAuth App with the following values:
+
+- Homepage URL:
+
+```text
+https://your-vercel-app.vercel.app
+```
+
+- Authorization callback URL:
+
+```text
+https://ai-pr-reviewer-nw1r.onrender.com/auth/github/callback
+```
+
+If your deployed backend uses a different public hostname, replace the callback URL path with your own deployed backend URL followed by `/auth/github/callback`.
+
 ## Local Development
 
 ### 1) Install backend dependencies
