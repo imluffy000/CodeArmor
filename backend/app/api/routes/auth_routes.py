@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from app.core.config import FRONTEND_URL
 from app.core.logging import audit, logger
+from app.core.timeutil import utcnow
 from app.db.models import User
 from app.github.client import GitHubError, fetch_github_user
 from app.services.auth_service import (
@@ -93,7 +94,7 @@ async def github_callback(
         audit("auth.login_failed", ip=_client_ip(request))
         return RedirectResponse(FRONTEND_URL + "?auth_error=1")
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = utcnow()
     user, created = User.get_or_create(
         github_id=gh_user["id"],
         defaults={

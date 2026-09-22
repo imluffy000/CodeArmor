@@ -9,6 +9,7 @@ Three rules hold everywhere in this codebase:
 * Security-relevant actions get an `audit()` line with a stable event name, so
   that after an incident you can reconstruct who did what.
 """
+import json
 import logging
 import os
 import re
@@ -17,6 +18,9 @@ import uuid
 from contextvars import ContextVar
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# json in production so a log aggregator can filter on trace_id, agent or
+# cost instead of regexing a formatted string.
+LOG_FORMAT = os.getenv("LOG_FORMAT", "text").strip().lower()
 
 # Set per request so every line from one request can be correlated, and so an
 # error response can hand the user an id to quote back at you.
@@ -67,16 +71,44 @@ class RedactFilter(logging.Filter):
         return True
 
 
-def _configure(name: str, level: str, label: str) -> logging.Logger:
+class JsonFormatter(logging.Formatter):
+    """One JSON object per line."""
+
+    def __init__(self, stream_name: str):
+        super().__init__()
+        self.stream_name = stream_name
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "stream": self.stream_name,
+            "request_id": getattr(record, "request_id", "-"),
+            "logger": record.name,
+            "module": record.module,
+            "line": record.lineno,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        for key, value in getattr(record, "fields", {}).items():
+            payload[key] = value
+        return json.dumps(payload, default=str)
+
+
+def _configure(name: str, level: str, label: str, stream: str) -> logging.Logger:
     log = logging.getLogger(name)
     log.setLevel(level)
     if not log.handlers:
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s | " + label + " | %(request_id)s | %(message)s"
+        if LOG_FORMAT == "json":
+            handler.setFormatter(JsonFormatter(stream))
+        else:
+            handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s | " + label + " | %(request_id)s | %(message)s"
+                )
             )
-        )
         handler.addFilter(RequestIdFilter())
         handler.addFilter(RedactFilter())
         log.addHandler(handler)
@@ -84,8 +116,8 @@ def _configure(name: str, level: str, label: str) -> logging.Logger:
     return log
 
 
-logger = _configure("codearmor", LOG_LEVEL, "%(levelname)-7s")
-audit_logger = _configure("codearmor.audit", "INFO", "AUDIT  ")
+logger = _configure("codearmor", LOG_LEVEL, "%(levelname)-7s", "app")
+audit_logger = _configure("codearmor.audit", "INFO", "AUDIT  ", "audit")
 
 
 def install_log_redaction() -> None:
@@ -109,6 +141,9 @@ def audit(event: str, **fields: object) -> None:
     Callers pass identifiers, never secrets. Values are rendered as key=value
     so the stream stays greppable without a log pipeline in front of it.
     """
+    if LOG_FORMAT == "json":
+        audit_logger.info(event, extra={"fields": {"event": event, **fields}})
+        return
     rendered = " ".join(f"{key}={value!r}" for key, value in sorted(fields.items()))
     audit_logger.info("%s %s", event, rendered)
 

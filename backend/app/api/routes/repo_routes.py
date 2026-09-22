@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.logging import audit, logger
+from app.core.timeutil import iso_utc
 from app.db.models import Repository, SyncJob, User
 from app.github import client as gh
 from app.services.auth_service import get_current_user, get_user_github_token, require_csrf
@@ -42,7 +43,7 @@ def _repo_dict(repo: Repository) -> dict:
         "stars": repo.stars,
         "open_prs": repo.open_prs,
         "sync_status": repo.sync_status,
-        "synced_at": repo.synced_at.isoformat() if repo.synced_at else None,
+        "synced_at": iso_utc(repo.synced_at),
     }
 
 
@@ -186,8 +187,8 @@ def sync_status(repo_id: int, user: User = Depends(get_current_user)):
             "status": job.status,
             "progress": job.progress,
             "error": job.error,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+            "started_at": iso_utc(job.started_at),
+            "finished_at": iso_utc(job.finished_at),
         },
     }
 

@@ -1,5 +1,6 @@
 """The fan-in: reconcile every agent's findings, gate the merge, write the summary."""
 from app.core.logging import logger
+from app.core.telemetry import agent_span
 from app.core.constants import ISSUE_BUCKETS
 from app.services import merge_gate_service
 from app.services.issue_service import reconcile
@@ -57,13 +58,15 @@ async def summary_agent(state) -> dict:
         )
 
     try:
-        summary = await generate_summary_text(
-            issue_count=len(all_issues),
-            categories=categories,
-            issues_text=issues_text,
-            merge_readiness=merge_gate_service.summarise_for_prompt(readiness),
-            coverage_note=coverage_note,
-        )
+        with agent_span("summary") as span:
+            summary = await generate_summary_text(
+                issue_count=len(all_issues),
+                categories=categories,
+                issues_text=issues_text,
+                merge_readiness=merge_gate_service.summarise_for_prompt(readiness),
+                coverage_note=coverage_note,
+                span=span,
+            )
     except Exception as exc:
         # The findings and the gate are the valuable output; a missing prose
         # summary should degrade, not fail the review.

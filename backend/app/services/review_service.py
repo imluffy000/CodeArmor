@@ -13,8 +13,16 @@ is a separate, explicit action on a review that already exists.
 import json
 from typing import AsyncIterator
 
-from app.core.logging import audit, logger
-from app.db.models import Repository, Review, User
+from app.core.config import LLM_MODEL, REVIEW_COST_CEILING_USD
+from app.core.timeutil import iso_utc
+from app.core.logging import audit, logger, request_id_var
+from app.core.telemetry import (
+    CostCeilingExceeded,
+    Trace,
+    check_cost_ceiling,
+    current_trace,
+)
+from app.db.models import AgentRun, Repository, Review, User
 from app.github import client as gh
 from app.graph.nodes import FAN_IN_NODE, SPECIALIST_NODES
 from app.graph.workflow import get_graph
@@ -22,7 +30,12 @@ from app.models.issue import Issue
 from app.services.diff_parser_service import parse_diff_files
 from app.services.integration_context_service import build_integration_context
 from app.services.review_message_service import generate_review_message
-from app.utils.helpers import build_agent_diff, default_pr_state, truncate_diff
+from app.utils.helpers import (
+    PROMPT_VERSION,
+    build_agent_diff,
+    default_pr_state,
+    truncate_diff,
+)
 from app.visualizer.review_output import build_structured_review
 
 
@@ -90,6 +103,7 @@ def _persist(
     pr_title: str | None,
     head_sha: str,
     structured: dict,
+    trace: Trace | None = None,
 ) -> Review:
     """Store the finished review.
 
@@ -99,7 +113,8 @@ def _persist(
     """
     serialisable = _serialisable(structured)
     stats = structured["stats"]
-    return Review.create(
+
+    review = Review.create(
         user=user,
         repository=repo,
         repo_full_name=repo_full_name,
@@ -109,7 +124,40 @@ def _persist(
         total_issues=stats["total_issues"],
         critical_issues=stats["by_severity"].get("CRITICAL", 0),
         payload=json.dumps(serialisable),
+        trace_id=trace.trace_id if trace else None,
+        duration_ms=trace.duration_ms if trace else None,
+        tokens_in=trace.total_tokens_in if trace else 0,
+        tokens_out=trace.total_tokens_out if trace else 0,
+        cost_usd=round(trace.total_cost_usd, 6) if trace else 0.0,
+        model=LLM_MODEL,
+        prompt_version=PROMPT_VERSION,
+        trace=json.dumps(trace.to_dict()) if trace else None,
     )
+
+    # A row per span, so "which agent times out most" and "what does
+    # the security agent cost" are queries rather than a scan of JSON.
+    if trace and trace.spans:
+        AgentRun.bulk_create(
+            [
+                AgentRun(
+                    review=review,
+                    agent=span.name,
+                    status=span.status,
+                    model=span.model,
+                    duration_ms=span.duration_ms,
+                    tokens_in=span.tokens_in,
+                    tokens_out=span.tokens_out,
+                    cost_usd=round(span.cost_usd, 6),
+                    findings=span.findings,
+                    dropped=span.dropped,
+                    parse_status=span.parse_status,
+                    error=span.error,
+                )
+                for span in trace.spans
+            ]
+        )
+
+    return review
 
 
 def _serialisable(structured: dict) -> dict:
@@ -132,7 +180,7 @@ def review_payload(review: Review, cached: bool = False) -> dict:
             "repo_full_name": review.repo_full_name,
             "pr_number": review.pr_number,
             "head_sha": review.head_sha,
-            "created_at": review.created_at.isoformat() if review.created_at else None,
+            "created_at": iso_utc(review.created_at),
             "cached": cached,
             "posted_to_github": review.posted_to_github,
         }
@@ -148,7 +196,7 @@ async def stream_review(
     user: User,
     repo: Repository,
     pr_number: int,
-    token: str,
+    github_token: str,
     use_cache: bool = True,
 ) -> AsyncIterator[dict]:
     """Run a review, yielding SSE-shaped progress events.
@@ -156,13 +204,48 @@ async def stream_review(
     Yields `{"event": ..., "data": ...}` dicts. The terminal event is either
     `complete` (with the full JSON payload) or `error`.
     """
+    # One trace per review, held in a ContextVar so every parallel agent
+    # branch records into the same object without the graph having to
+    # carry it as state.
+    trace = Trace()
+    trace.attributes = {
+        "repo_id": repo.id,
+        "pr_number": pr_number,
+        "user_id": user.id,
+        "request_id": request_id_var.get(),
+    }
+    # Restore by setting the previous value rather than with reset(token):
+    # an async generator is resumed in the consumer's context, so a token
+    # created in this frame raises "was created in a different Context" when
+    # the finally block runs.
+    previous = current_trace.get()
+    current_trace.set(trace)
+    try:
+        async for event in _run_review(
+            user, repo, pr_number, github_token, use_cache, trace
+        ):
+            yield event
+    finally:
+        current_trace.set(previous)
+        trace.log_summary()
+
+
+async def _run_review(
+    user: User,
+    repo: Repository,
+    pr_number: int,
+    token: str,
+    use_cache: bool,
+    trace: Trace,
+) -> AsyncIterator[dict]:
     full_name = repo.full_name
 
     yield {"event": "step", "data": "fetch_diff_start"}
 
     try:
-        context = await build_integration_context(token, full_name, pr_number)
-        diff = await gh.fetch_pr_diff(token, full_name, pr_number)
+        with trace.span("gather", kind="github"):
+            context = await build_integration_context(token, full_name, pr_number)
+            diff = await gh.fetch_pr_diff(token, full_name, pr_number)
     except gh.GitHubError as exc:
         logger.warning("Could not load %s#%s: %s", full_name, pr_number, exc)
         yield {"event": "error", "data": exc.safe_message}
@@ -231,6 +314,17 @@ async def stream_review(
                         yield {"event": "agent_done", "data": node_name}
                 elif node_name == FAN_IN_NODE:
                     yield {"event": "step", "data": "summary_done"}
+
+        check_cost_ceiling(trace, REVIEW_COST_CEILING_USD)
+    except CostCeilingExceeded as exc:
+        logger.warning(
+            "Review of %s#%s stopped at the cost ceiling: %s",
+            full_name,
+            pr_number,
+            exc,
+        )
+        yield {"event": "error", "data": str(exc)}
+        return
     except Exception:
         logger.exception("Review pipeline failed for %s#%s", full_name, pr_number)
         yield {"event": "error", "data": "The review pipeline failed. Please try again."}
@@ -258,6 +352,7 @@ async def stream_review(
         pr_title=pr_meta.get("title"),
         head_sha=head_sha,
         structured=structured,
+        trace=trace,
     )
 
     audit(
@@ -268,6 +363,9 @@ async def stream_review(
         pr_number=pr_number,
         findings=structured["stats"]["total_issues"],
         verdict=(structured.get("merge_readiness") or {}).get("verdict"),
+        trace_id=trace.trace_id,
+        cost_usd=round(trace.total_cost_usd, 4),
+        duration_ms=trace.duration_ms,
     )
 
     yield {"event": "complete", "data": json.dumps(review_payload(review))}

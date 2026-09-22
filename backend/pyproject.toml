@@ -12,4 +12,4 @@ ignore-paths = ['^app/venv/.*$', '^\.venv/.*$']
 # Peewee builds model fields (including the implicit `id` primary key) at class
 # creation time, so static analysis cannot see them. Verified working at runtime.
 generated-members = ['id', 'DoesNotExist']
-ignored-classes = ['Model', 'ModelSelect', 'ModelBase']
+ignored-classes = ['Model', 'ModelBase', 'ModelSelect']

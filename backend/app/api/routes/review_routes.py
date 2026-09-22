@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.logging import audit, logger
+from app.core.timeutil import iso_utc
 from app.db.models import Repository, Review, User
 from app.models.request_models import ChatRequest, PostReviewRequest, ReviewRequest
 from app.models.response_models import ReviewResponse, ReviewSummaryItem
@@ -164,7 +165,7 @@ def list_reviews(
                 "score": (payload.get("stats") or {}).get("score"),
                 "verdict": (payload.get("merge_readiness") or {}).get("verdict"),
                 "posted_to_github": review.posted_to_github,
-                "created_at": review.created_at.isoformat() if review.created_at else "",
+                "created_at": iso_utc(review.created_at) or "",
             }
         )
     return items

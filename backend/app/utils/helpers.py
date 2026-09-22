@@ -15,6 +15,7 @@ the user; if that slice happens to be clean, the product reports a clean PR. So
 files are ranked by how much they matter to a reviewer, each gets a share of the
 budget, and every changed file is at least named even when its hunks do not fit.
 """
+import hashlib
 from pathlib import Path
 
 from app.core.config import AGENT_DIFF_CHARS, MAX_DIFF_CHARS
@@ -22,6 +23,23 @@ from app.core.constants import ISSUE_BUCKETS
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 SHARED_DIR = PROMPTS_DIR / "_shared"
+
+def _compute_prompt_version() -> str:
+    """A short hash over every prompt file.
+
+    Stored on each review so a change in findings can be attributed to a prompt
+    edit rather than to the model drifting, and so a cached review is
+    invalidated when the prompts change under it.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(PROMPTS_DIR.rglob('*.txt')):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+PROMPT_VERSION = _compute_prompt_version()
+
 
 # Files a reviewer should see first if the budget is tight. Lower sorts earlier.
 _PRIORITY_TAGS = {

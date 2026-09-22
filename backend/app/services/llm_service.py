@@ -21,8 +21,9 @@ import secrets
 
 from pydantic import ValidationError
 
-from app.core.config import LLM_TIMEOUT_SECONDS
+from app.core.config import LLM_MODEL, LLM_TIMEOUT_SECONDS
 from app.core.logging import logger
+from app.core.telemetry import Span
 from app.models.issue import Issue
 from app.utils.helpers import load_prompt, load_system_prompt, render_prompt
 from app.utils.openrouter_client import LLMNotConfigured, get_llm
@@ -120,8 +121,14 @@ async def review_diff(
     diff: str,
     review_context: str = "",
     extra_context: str = "",
+    span: Span | None = None,
 ) -> AgentResult:
-    """Run one specialist agent over the diff."""
+    """Run one specialist agent over the diff.
+
+    `span` is optional so the function stays usable from tests and the eval
+    harness, but production always passes one - it is what makes a wrong
+    finding attributable to a model, a latency and a token count afterwards.
+    """
     template = load_prompt(prompt_name)
     nonce = secrets.token_hex(8)
 
@@ -144,11 +151,20 @@ async def review_diff(
             llm.ainvoke(messages), timeout=LLM_TIMEOUT_SECONDS + 15
         )
     except LLMNotConfigured as exc:
+        if span:
+            span.status = "skipped"
+            span.error = "llm_not_configured"
         return AgentResult(prompt_name, [], error=str(exc))
     except asyncio.TimeoutError:
+        if span:
+            span.status = "timeout"
+            span.error = f"timed out after {LLM_TIMEOUT_SECONDS}s"
         return AgentResult(
             prompt_name, [], error=f"timed out after {LLM_TIMEOUT_SECONDS}s"
         )
+
+    if span:
+        span.record_usage(response, LLM_MODEL)
 
     content = str(response.content or "")
 
@@ -156,9 +172,18 @@ async def review_diff(
         raw_items = parse_llm_json_array(content)
     except LLMParseError as exc:
         logger.warning("%s agent: unparseable response (%s)", prompt_name, exc)
+        if span:
+            span.status = "error"
+            span.parse_status = "empty" if not content.strip() else "unparseable"
+            span.error = "unparseable_response"
         return AgentResult(prompt_name, [], error="the model returned an unusable response")
 
     issues, dropped = _validate_findings(raw_items, category, prompt_name)
+
+    if span:
+        span.parse_status = "ok"
+        span.findings = len(issues)
+        span.dropped = dropped
 
     injection = any(
         _looks_like_injection(issue.issue) or _looks_like_injection(issue.suggestion)
@@ -176,6 +201,7 @@ async def generate_summary_text(
     issues_text: str,
     merge_readiness: str = "",
     coverage_note: str = "",
+    span: Span | None = None,
 ) -> str:
     """Write the executive summary. Never claims a PR is approved."""
     template = load_prompt("summary")
@@ -198,6 +224,8 @@ async def generate_summary_text(
         ),
         timeout=LLM_TIMEOUT_SECONDS + 15,
     )
+    if span:
+        span.record_usage(response, LLM_MODEL)
     return str(response.content or "").strip()
 
 

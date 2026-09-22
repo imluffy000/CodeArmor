@@ -30,6 +30,12 @@ jobs:
       - name: Security scan the backend
         run: python -m bandit -r app -x app/venv,app/scripts -ll
 
+      - name: Evaluation harness (offline)
+        # Offline only: no model calls, no credits, deterministic. Fails the
+        # build on a regression against app/eval/baseline.json.
+        # Run `python -m app.eval.run --live` by hand when a prompt changes.
+        run: python -m app.eval.run
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest

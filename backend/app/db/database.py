@@ -7,10 +7,18 @@ and SQLite would lose every row on each deploy).
 """
 import re
 
-from peewee import DatabaseProxy, IntegerField, SqliteDatabase
+from peewee import (
+    CharField,
+    DatabaseProxy,
+    FloatField,
+    IntegerField,
+    SqliteDatabase,
+    TextField,
+)
 
 from app.core.config import DATABASE_PATH, DATABASE_URL
 from app.core.logging import logger
+from app.core.timeutil import utcnow
 
 db = DatabaseProxy()
 
@@ -33,13 +41,13 @@ def _build_database():
 
 def init_db() -> None:
     """Bind the proxy, create missing tables, and clean up orphaned jobs."""
-    from app.db.models import Repository, Review, SyncJob, User
+    from app.db.models import AgentRun, Repository, Review, SyncJob, User
 
     database = _build_database()
     db.initialize(database)
 
     db.connect(reuse_if_open=True)
-    db.create_tables([User, Repository, SyncJob, Review], safe=True)
+    db.create_tables([User, Repository, SyncJob, Review, AgentRun], safe=True)
 
     _apply_column_migrations()
     _reconcile_interrupted_jobs()
@@ -54,8 +62,6 @@ def _reconcile_interrupted_jobs() -> None:
     Without this, a repo connected right before a deploy is stuck showing
     "Syncing..." in the UI forever.
     """
-    import datetime
-
     from app.db.models import Repository, SyncJob
 
     stranded = (
@@ -63,7 +69,7 @@ def _reconcile_interrupted_jobs() -> None:
             status="failed",
             progress="Interrupted by a server restart",
             error="Server restarted before the sync finished. Reconnect the repository to retry.",
-            finished_at=datetime.datetime.now(datetime.timezone.utc),
+            finished_at=utcnow(),
         )
         .where(SyncJob.status.in_(["queued", "running"]))
         .execute()
@@ -82,6 +88,14 @@ def _reconcile_interrupted_jobs() -> None:
 # "no such column".
 _ADDED_COLUMNS = [
     ("user", "session_version", lambda: IntegerField(default=1)),
+    ("review", "trace_id", lambda: CharField(null=True)),
+    ("review", "duration_ms", lambda: IntegerField(null=True)),
+    ("review", "tokens_in", lambda: IntegerField(default=0)),
+    ("review", "tokens_out", lambda: IntegerField(default=0)),
+    ("review", "cost_usd", lambda: FloatField(default=0.0)),
+    ("review", "model", lambda: CharField(null=True)),
+    ("review", "prompt_version", lambda: CharField(null=True)),
+    ("review", "trace", lambda: TextField(null=True)),
 ]
 
 
@@ -117,9 +131,14 @@ def _apply_column_migrations() -> None:
             raise ValueError(
                 f"Refusing to migrate unsafe identifier: {table}.{column}"
             )
-        database.execute_sql(
-            f"UPDATE {table} SET {column} = 1 WHERE {column} IS NULL"  # nosec B608
-        )
+        # Only backfill columns that carry a non-null default; a nullable
+        # column is meant to stay null on existing rows.
+        default = getattr(field_factory(), "default", None)
+        if default is not None:
+            database.execute_sql(
+                f"UPDATE {table} SET {column} = {float(default)} "  # nosec B608
+                f"WHERE {column} IS NULL"
+            )
 
 
 def close_db() -> None:

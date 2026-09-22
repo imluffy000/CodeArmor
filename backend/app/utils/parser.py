@@ -1,4 +1,4 @@
-"""Extract a JSON array from an LLM response.
+r"""Extract a JSON array from an LLM response.
 
 A regex like `\[[\s\S]*?\]` looks adequate until a finding's code snippet
 contains `items[0]` or `List[str]` - the non-greedy match stops at that inner

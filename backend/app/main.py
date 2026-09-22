@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.routes.auth_routes import router as auth_router
 from app.api.routes.health_routes import router as health_router
 from app.api.routes.home_routes import router as home_router
+from app.api.routes.ops_routes import router as ops_router
 from app.api.routes.repo_routes import router as repo_router
 from app.api.routes.review_routes import router as review_router
 from app.core.config import ALLOWED_ORIGINS, ENVIRONMENT, validate_config
@@ -100,3 +101,4 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(repo_router)
 app.include_router(review_router)
+app.include_router(ops_router)

@@ -11,6 +11,7 @@ For more than one instance this belongs in a real queue - see the README.
 import asyncio
 import datetime
 
+from app.core.timeutil import utcnow
 from app.core.logging import logger
 from app.db.models import Repository, SyncJob
 from app.github import client as gh
@@ -43,10 +44,6 @@ async def cancel_running_tasks() -> None:
         await asyncio.gather(*list(_running), return_exceptions=True)
 
 
-def _utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
-
-
 async def run_repo_sync(repo_id: int, job_id: int) -> None:
     repo = Repository.get_or_none(Repository.id == repo_id)
     job = SyncJob.get_or_none(SyncJob.id == job_id)
@@ -56,7 +53,7 @@ async def run_repo_sync(repo_id: int, job_id: int) -> None:
 
     job.status = "running"
     job.progress = "Fetching repository metadata"
-    job.started_at = _utcnow()
+    job.started_at = utcnow()
     job.save()
     repo.sync_status = "syncing"
     repo.save()
@@ -85,14 +82,14 @@ async def run_repo_sync(repo_id: int, job_id: int) -> None:
             repo.open_prs = open_prs
 
         repo.sync_status = "synced"
-        repo.synced_at = _utcnow()
+        repo.synced_at = utcnow()
         repo.save()
 
         job.status = "completed"
         job.progress = (
             "Sync complete" if open_prs is not None else "Sync complete (PR count unavailable)"
         )
-        job.finished_at = _utcnow()
+        job.finished_at = utcnow()
         job.save()
         logger.info("Repository %s synced", repo.id)
 
@@ -100,7 +97,7 @@ async def run_repo_sync(repo_id: int, job_id: int) -> None:
         job.status = "failed"
         job.progress = "Interrupted"
         job.error = "The server shut down before the sync finished. Try again."
-        job.finished_at = _utcnow()
+        job.finished_at = utcnow()
         job.save()
         repo.sync_status = "failed"
         repo.save()
@@ -126,5 +123,5 @@ def _fail(repo: Repository, job: SyncJob, message: str) -> None:
     job.status = "failed"
     job.error = message
     job.progress = "Sync failed"
-    job.finished_at = _utcnow()
+    job.finished_at = utcnow()
     job.save()

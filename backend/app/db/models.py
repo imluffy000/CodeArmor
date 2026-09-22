@@ -1,22 +1,21 @@
 """Peewee models: users, connected repositories, sync jobs, stored reviews."""
-import datetime
 import json
 
 from peewee import (
     BooleanField,
     CharField,
     DateTimeField,
+    FloatField,
     ForeignKeyField,
     IntegerField,
     Model,
     TextField,
 )
 
+from app.core.timeutil import utcnow
 from app.db.database import db
 
 
-def utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
 
 
 class BaseModel(Model):
@@ -94,6 +93,20 @@ class Review(BaseModel):
     posted_to_github = BooleanField(default=False)
     # Full structured ReviewResponse payload as JSON.
     payload = TextField()
+
+    # --- observability ---------------------------------------------------
+    # Correlates this review with its log lines, and makes a wrong answer
+    # attributable to a specific agent, model and prompt version afterwards.
+    trace_id = CharField(index=True, null=True)
+    duration_ms = IntegerField(null=True)
+    tokens_in = IntegerField(default=0)
+    tokens_out = IntegerField(default=0)
+    cost_usd = FloatField(default=0.0)
+    model = CharField(null=True)
+    prompt_version = CharField(null=True)
+    # Full span list as JSON, for the trace view.
+    trace = TextField(null=True)
+
     created_at = DateTimeField(default=utcnow, index=True)
 
     class Meta:
@@ -102,3 +115,28 @@ class Review(BaseModel):
     @property
     def data(self) -> dict:
         return json.loads(self.payload)
+
+
+class AgentRun(BaseModel):
+    """One agent's execution inside one review.
+
+    A row per span rather than only the JSON blob on Review, so that questions
+    like "which agent times out most" or "what does the security agent cost"
+    are a query instead of a scan.
+    """
+
+    review = ForeignKeyField(Review, backref="agent_runs", on_delete="CASCADE")
+    agent = CharField(index=True)
+    status = CharField(default="ok")  # ok | error | timeout | skipped
+    model = CharField(null=True)
+    duration_ms = IntegerField(default=0)
+    tokens_in = IntegerField(default=0)
+    tokens_out = IntegerField(default=0)
+    cost_usd = FloatField(default=0.0)
+    findings = IntegerField(default=0)
+    # Findings the model returned that failed validation. A rising number here
+    # is the earliest signal that a prompt or model change went wrong.
+    dropped = IntegerField(default=0)
+    parse_status = CharField(null=True)
+    error = TextField(null=True)
+    created_at = DateTimeField(default=utcnow, index=True)

@@ -20,6 +20,7 @@ from app.core.config import (
     SESSION_SECRET,
     SESSION_TTL_HOURS,
 )
+from app.core.timeutil import utcnow
 from app.core.logging import audit, logger
 from app.db.models import User
 from app.services.crypto_service import TokenDecryptionError, decrypt_token
@@ -34,10 +35,6 @@ JWT_ISSUER = "codearmor-api"
 JWT_AUDIENCE = "codearmor-web"
 
 STATE_TTL_MINUTES = 10
-
-
-def _utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
 
 
 def cookie_kwargs(http_only: bool = True) -> dict:
@@ -64,7 +61,7 @@ def cookie_kwargs(http_only: bool = True) -> dict:
 # --------------------------------------------------------------------------
 
 def create_session_token(user: User) -> str:
-    now = _utcnow()
+    now = utcnow()
     payload = {
         "sub": str(user.id),
         "sv": user.session_version,
@@ -145,7 +142,7 @@ def clear_session_cookies(response: Response) -> None:
 def revoke_all_sessions(user: User) -> None:
     """Invalidate every session token previously issued to this user."""
     user.session_version = (user.session_version or 1) + 1
-    user.updated_at = _utcnow()
+    user.updated_at = utcnow()
     user.save()
     audit("auth.sessions_revoked", user_id=user.id, login=user.login)
 
@@ -155,7 +152,7 @@ def revoke_all_sessions(user: User) -> None:
 # --------------------------------------------------------------------------
 
 def create_state_token(state: str) -> str:
-    now = _utcnow()
+    now = utcnow()
     return jwt.encode(
         {
             "state": state,

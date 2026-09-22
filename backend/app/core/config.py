@@ -31,6 +31,10 @@ def _env_list(name: str, default: list[str]) -> list[str]:
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 
+# One JSON object per line, so a log aggregator can filter on trace_id,
+# agent or cost instead of regexing a formatted string.
+LOG_FORMAT = os.getenv("LOG_FORMAT", "json" if IS_PRODUCTION else "text").strip().lower()
+
 # LangChain turns on LangSmith tracing from environment variables alone, and
 # it uploads full prompt and completion payloads - which here means users'
 # private source code, mirrored to a second third party with no code change.
@@ -93,6 +97,9 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", str(BACKEND_DIR / "app_data.db"))
 MAX_DIFF_CHARS = int(os.getenv("MAX_DIFF_CHARS", "60000"))
 AGENT_DIFF_CHARS = int(os.getenv("AGENT_DIFF_CHARS", "24000"))
 REVIEW_RATE_LIMIT_PER_HOUR = int(os.getenv("REVIEW_RATE_LIMIT_PER_HOUR", "20"))
+# Hard stop on one review's spend. A 500-file pull request otherwise costs
+# whatever it costs, and nobody finds out until the invoice.
+REVIEW_COST_CEILING_USD = float(os.getenv("REVIEW_COST_CEILING_USD", "0.50"))
 CHAT_RATE_LIMIT_PER_HOUR = int(os.getenv("CHAT_RATE_LIMIT_PER_HOUR", "60"))
 
 # Posting a review back to GitHub writes to the user's repository, so it is

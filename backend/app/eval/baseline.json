@@ -1,0 +1,55 @@
+{
+  "prompt_version": "284f3dfab46a",
+  "model": null,
+  "offline": {
+    "parser_robustness": {
+      "name": "parser_robustness",
+      "passed": 13,
+      "total": 13,
+      "rate": 1.0,
+      "failures": []
+    },
+    "finding_validation": {
+      "name": "finding_validation",
+      "passed": 16,
+      "total": 16,
+      "rate": 1.0,
+      "failures": []
+    },
+    "deduplication": {
+      "name": "deduplication",
+      "passed": 5,
+      "total": 5,
+      "rate": 1.0,
+      "failures": []
+    },
+    "integration_facts": {
+      "name": "integration_facts",
+      "passed": 13,
+      "total": 13,
+      "rate": 1.0,
+      "failures": []
+    },
+    "merge_gate": {
+      "name": "merge_gate",
+      "passed": 13,
+      "total": 13,
+      "rate": 1.0,
+      "failures": []
+    },
+    "diff_budget": {
+      "name": "diff_budget",
+      "passed": 6,
+      "total": 6,
+      "rate": 1.0,
+      "failures": []
+    },
+    "prompt_assembly": {
+      "name": "prompt_assembly",
+      "passed": 21,
+      "total": 21,
+      "rate": 1.0,
+      "failures": []
+    }
+  }
+}
