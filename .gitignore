@@ -1,63 +1,43 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-venv/
-.venv/
-backend/.venv/
-frontend/.venv/
+# --- secrets --------------------------------------------------------------
 .env
-.env.*
+.env.local
+.env.*.local
+.env.production
 !.env.example
 
-*.log
+# --- databases: never commit one -----------------------------------------
+# A committed SQLite file shipped encrypted OAuth tokens to a public repo once.
+# Note that these rules do NOT untrack a file git is already tracking; that
+# needs `git rm --cached`.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 
-.vscode/
-.idea/
-.DS_Store
-
+# --- python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+**/venv/
+**/.venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-coverage/
+# --- node -----------------------------------------------------------------
+node_modules/
 
+# --- build output ---------------------------------------------------------
 dist/
 build/
-frontend/dist/
-frontend/.vite/
+.vite/
+coverage/
 
-node_modules/
-frontend/node_modules/
-backend/node_modules/
-
-*.sqlite3
-*.db
-
-
-*.egg-info/
-
-
-# Node
-node_modules/
-frontend/node_modules/
-
-# Build
-dist/
-frontend/dist/
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-.env
-
-# Database
-*.db
-*.db-shm
-*.db-wal
-
+# --- editors and OS -------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+*.log
