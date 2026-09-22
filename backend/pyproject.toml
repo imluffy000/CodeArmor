@@ -1,0 +1,15 @@
+[tool.pytest.ini_options]
+# Without this, `pytest tests` cannot import `app`: only `python -m pytest`
+# worked, because that puts the cwd on sys.path.
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.pylint.main]
+ignore-paths = ['^app/venv/.*$', '^\.venv/.*$']
+
+[tool.pylint.typecheck]
+# Peewee builds model fields (including the implicit `id` primary key) at class
+# creation time, so static analysis cannot see them. Verified working at runtime.
+generated-members = ['id', 'DoesNotExist']
+ignored-classes = ['Model', 'ModelSelect', 'ModelBase']

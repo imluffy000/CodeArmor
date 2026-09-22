@@ -1,15 +1,38 @@
-You are writing an executive summary of a PR code review for a developer.
+You are writing the executive summary of an automated pull request review, for
+the developer who opened it.
 
-Total issues: {issue_count}
-Categories present: {categories}
+Findings: {{ISSUE_COUNT}}
+Categories present: {{CATEGORIES}}
 
-Issues:
-{issues_text}
+Merge readiness (computed from GitHub, not inferred):
+{{MERGE_READINESS}}
 
-Write the summary in EXACTLY this plain-text structure (no markdown code fences, no headings, no extra commentary):
+{{COVERAGE_NOTE}}
 
-Line 1: A single-sentence overall verdict on the PR's health (e.g. "This PR is largely solid but ships two critical security gaps that must be fixed before merge.").
-Then 2-4 bullet lines, each starting with "- ", covering the most important findings in order of severity. Name the affected file when relevant. Keep each bullet under 25 words.
-Last line: Start with "Recommendation: " followed by the single most valuable next action for the developer.
+Findings, worst first:
+{{ISSUES_TEXT}}
 
-If there are no issues, Line 1 should say the PR looks clean, skip the bullets, and the Recommendation line should suggest merging.
+Write plain text in exactly this shape. No markdown headings, no code fences, no
+preamble, no sign-off.
+
+Line 1 — one sentence on the state of this pull request. Lead with whatever most
+changes the reader's next action: a blocking integration problem or a critical
+security finding outranks a count of style notes.
+
+Then 2 to 5 lines, each starting with "- ", covering the findings that matter, in
+order of severity. Name the file. Keep each under 25 words. If a merge-readiness
+problem exists (conflicts, failing checks, an unsafe migration), one of these
+lines must be about it.
+
+Last line — start with "Recommendation: " and give the single most valuable next
+action. Be concrete: name the file to fix, or the check to re-run, or the order
+to deploy in.
+
+Rules:
+- Never say the pull request is approved, safe to merge, or fully verified. This
+  review is one input to a human decision, and it read only what it was given.
+- If the coverage note says part of the diff was not reviewed, say so in line 1.
+  A partial review that reads as a clean bill of health is worse than no review.
+- If there are no findings and nothing blocks the merge, line 1 says no issues
+  were detected, skip the bullets, and the recommendation is a human review — not
+  a merge.

@@ -1,9 +1,12 @@
+"""Turn a finished review into the structured payload the API returns."""
 from collections import defaultdict
 
+from app.core.constants import SEVERITY_ORDER, SUPPORTED_CATEGORIES, SUPPORTED_SEVERITIES
 from app.models.issue import Issue
+from app.services.issue_service import compute_score, score_label
 
 
-def build_stats(issues: list[Issue]) -> dict:
+def build_stats(issues: list[Issue], coverage_percent: int = 100) -> dict:
     by_severity: dict[str, int] = defaultdict(int)
     by_category: dict[str, int] = defaultdict(int)
     files = set()
@@ -13,11 +16,25 @@ def build_stats(issues: list[Issue]) -> dict:
         by_category[issue.category] += 1
         files.add(issue.file)
 
+    score = compute_score(issues, coverage_percent)
+
     return {
         "total_issues": len(issues),
         "files_affected": len(files),
-        "by_severity": dict(sorted(by_severity.items())),
-        "by_category": dict(sorted(by_category.items())),
+        # Worst-first, and every bucket present so the client never has to guess
+        # whether a missing key means zero or means the key was renamed.
+        "by_severity": {
+            severity: by_severity.get(severity, 0)
+            for severity in sorted(SUPPORTED_SEVERITIES, key=lambda s: -SEVERITY_ORDER[s])
+        },
+        "by_category": {
+            category: by_category.get(category, 0) for category in SUPPORTED_CATEGORIES
+        },
+        "blocking_issues": by_severity.get("CRITICAL", 0) + by_severity.get("HIGH", 0),
+        # Computed server-side so it is stored, reproducible, and identical for
+        # every client that reads this review.
+        "score": score,
+        "score_label": score_label(score),
     }
 
 
@@ -27,7 +44,11 @@ def build_files_with_issues(issues: list[Issue]) -> list[dict]:
         grouped[issue.file].append(issue)
 
     result = []
-    for path in sorted(grouped.keys()):
+    # Files with the worst finding first, so the reader starts where it matters.
+    for path in sorted(
+        grouped.keys(),
+        key=lambda p: (-max(SEVERITY_ORDER.get(i.severity, 0) for i in grouped[p]), p),
+    ):
         file_issues = grouped[path]
         result.append(
             {
@@ -41,6 +62,9 @@ def build_files_with_issues(issues: list[Issue]) -> list[dict]:
                         "recommendation": i.suggestion,
                         "code_snippet": i.code_snippet,
                         "suggestion_snippet": i.suggestion_snippet,
+                        "line": i.line,
+                        "agreement": i.agreement,
+                        "also_reported_as": i.also_reported_as,
                     }
                     for i in file_issues
                 ],
@@ -49,41 +73,66 @@ def build_files_with_issues(issues: list[Issue]) -> list[dict]:
     return result
 
 
-def build_folder_view(tree: dict, prefix: str = "") -> str:
-    lines = []
-    entries = sorted(tree.items(), key=lambda x: x[0])
+def build_folder_view(node: dict, prefix: str = "") -> str:
+    """Render the tree as text. Node shapes are explicit, so nothing is guessed."""
+    if not node:
+        return ""
 
-    for index, (name, value) in enumerate(entries):
+    lines: list[str] = []
+    dirs = node.get("dirs") or {}
+    files = node.get("files") or {}
+
+    entries: list[tuple[str, str, object]] = [
+        *[("dir", name, child) for name, child in sorted(dirs.items())],
+        *[("file", name, child) for name, child in sorted(files.items())],
+    ]
+
+    for index, (kind, name, child) in enumerate(entries):
         is_last = index == len(entries) - 1
         branch = "└── " if is_last else "├── "
+        extension = "    " if is_last else "│   "
         lines.append(f"{prefix}{branch}{name}")
 
-        if isinstance(value, dict) and value and "problem" not in value:
-            extension = "    " if is_last else "│   "
-            lines.append(build_folder_view(value, prefix + extension))
-        elif isinstance(value, list):
-            extension = "    " if is_last else "│   "
-            for issue_index, item in enumerate(value):
-                marker = "└─" if issue_index == len(value) - 1 else "├─"
-                lines.append(
-                    f"{prefix}{extension}{marker} "
-                    f"[{item['severity']}] {item['category']}: {item['problem']}"
-                )
-                lines.append(
-                    f"{prefix}{extension}{'   ' if marker == '└─' else '│  '}"
-                    f"→ Fix: {item['recommendation']}"
-                )
+        if kind == "dir":
+            rendered = build_folder_view(child, prefix + extension)
+            if rendered:
+                lines.append(rendered)
+            continue
+
+        for issue_index, item in enumerate(child):
+            marker = "└─" if issue_index == len(child) - 1 else "├─"
+            continuation = "   " if marker == "└─" else "│  "
+            location = f" (line {item['line']})" if item.get("line") else ""
+            lines.append(
+                f"{prefix}{extension}{marker} "
+                f"[{item['severity']}] {item['category']}{location}: {item['problem']}"
+            )
+            lines.append(
+                f"{prefix}{extension}{continuation}-> Fix: {item['recommendation']}"
+            )
 
     return "\n".join(lines)
 
 
-def build_structured_review(summary: str, issues: list[Issue], folder_tree: dict) -> dict:
-    stats = build_stats(issues)
+def build_structured_review(
+    summary: str,
+    issues: list[Issue],
+    folder_tree: dict,
+    merge_readiness: dict | None = None,
+    coverage: dict | None = None,
+    agent_errors: list[dict] | None = None,
+    dropped_findings: int = 0,
+) -> dict:
+    coverage = coverage or {}
+    coverage_percent = coverage.get("coverage_percent", 100)
+
+    stats = build_stats(issues, coverage_percent)
     files_with_issues = build_files_with_issues(issues)
+
     folder_view = (
-        "📁 Files with issues:\n" + build_folder_view(folder_tree)
+        "Files with findings:\n" + build_folder_view(folder_tree)
         if issues
-        else "📁 No files with issues."
+        else "No files with findings."
     )
 
     return {
@@ -93,4 +142,17 @@ def build_structured_review(summary: str, issues: list[Issue], folder_tree: dict
         "folder_tree": folder_tree,
         "folder_view": folder_view,
         "issues": issues,
+        "merge_readiness": merge_readiness or {},
+        "coverage": {
+            "reviewed_percent": coverage_percent,
+            "truncated": bool(coverage.get("truncated")),
+            "files_reviewed": coverage.get("files_included") or [],
+            "files_not_reviewed": coverage.get("files_omitted") or [],
+        },
+        # Surfaced rather than swallowed: a review missing its security pass must
+        # not be presentable as a clean bill of health.
+        "agent_errors": agent_errors or [],
+        "dropped_findings": dropped_findings,
+        "github_error": None,
+        "posted_to_github": False,
     }

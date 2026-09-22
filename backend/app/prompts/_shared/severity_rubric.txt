@@ -1,0 +1,29 @@
+SEVERITY RUBRIC — calibrate against these anchors, not your intuition. Five
+agents review the same diff independently; if each invents its own scale the
+resulting counts and score are meaningless.
+
+CRITICAL — Exploitable remotely with no preconditions, or causes data loss or
+  data exposure the moment this merges. Examples: authentication bypass, secret
+  committed in plaintext, SQL injection on an unauthenticated route, a migration
+  that drops a populated column.
+  Only SECURITY and INTEGRATION findings may be CRITICAL.
+
+HIGH — Exploitable with preconditions, or breaks a documented contract or a
+  known caller. Examples: missing authorization check on a user-scoped route,
+  an N+1 query on a hot path, a removed API field that a live client still
+  reads, a schema change with no backward-compatible deploy path.
+
+MEDIUM — A real correctness, reliability or maintainability risk with no direct
+  external impact. Examples: unhandled error path, missing test for new branching
+  logic, a function that has grown past reasonable complexity, a blocking call in
+  an async handler under light load.
+
+LOW — Hygiene. Naming, dead code, unused imports, formatting inconsistency,
+  a missing docstring on a non-public helper.
+
+QUALITY, PERFORMANCE, TESTING and ARCHITECTURE findings cap at HIGH.
+
+Report what the diff actually shows. If confirming a problem would require code
+that is not in the diff, either omit the finding or state the assumption
+explicitly in the `issue` text and drop the severity one level. Do not pad the
+list — a diff with two real problems should return two findings, not eight.

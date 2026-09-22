@@ -1,23 +1,26 @@
-"""Connected-repository endpoints: list available, connect (with background sync), status."""
+"""Connected-repository endpoints: browse, connect, sync status, pull requests."""
 import asyncio
 import re
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.logging import logger
+from app.core.logging import audit, logger
 from app.db.models import Repository, SyncJob, User
-from app.services.auth_service import get_current_user
-from app.services.crypto_service import decrypt_token
-from app.services.github_oauth_service import fetch_repo, list_pull_requests, list_user_repos
-from app.services.sync_service import run_repo_sync
+from app.github import client as gh
+from app.services.auth_service import get_current_user, get_user_github_token, require_csrf
+from app.services.sync_service import run_repo_sync, track_task
 
 router = APIRouter(prefix="/repos", tags=["repos"])
 
+# Deliberately strict: GitHub owner and repo names cannot contain "..", "?" or
+# "#", and those segments end up interpolated into an API path.
+_SEGMENT = r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?"
 REPO_URL_RE = re.compile(
-    r"^(?:https?://github\.com/)?(?P<owner>[\w.-]+)/(?P<name>[\w.-]+?)(?:\.git)?/?$"
+    rf"^(?:https?://github\.com/)?(?P<owner>{_SEGMENT})/(?P<name>{_SEGMENT})(?:\.git)?/?$"
 )
+
+PER_PAGE = 30
 
 
 class ConnectRepoRequest(BaseModel):
@@ -43,18 +46,39 @@ def _repo_dict(repo: Repository) -> dict:
     }
 
 
+def _owned_repo(user: User, repo_id: int) -> Repository:
+    repo = Repository.get_or_none((Repository.id == repo_id) & (Repository.user == user))
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repository not connected")
+    return repo
+
+
 @router.get("/available")
 async def available_repos(
     page: int = Query(1, ge=1),
     search: str = Query("", max_length=100),
     user: User = Depends(get_current_user),
 ):
-    """List repos the user can access on GitHub (paginated, newest activity first)."""
-    token = decrypt_token(user.access_token_encrypted)
+    """Repositories the user can access on GitHub.
+
+    Search goes to GitHub rather than filtering the page we already fetched.
+    Filtering after pagination searched only 30 of the user's repositories, and
+    because the filtered page then held fewer than a full page, the client's
+    "is there a next page" heuristic disabled Next - dead-ending anyone with
+    more than 30 repositories.
+    """
+    token = get_user_github_token(user)
+    term = search.strip()
+
     try:
-        repos = await list_user_repos(token, page=page)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc.response.status_code}")
+        if term:
+            result = await gh.search_user_repos(token, term, page=page, per_page=PER_PAGE)
+            repos, total = result["items"], result["total"]
+        else:
+            repos = await gh.list_user_repos(token, page=page, per_page=PER_PAGE)
+            total = None
+    except gh.GitHubError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.safe_message)
 
     connected = {r.full_name for r in user.repositories}
     items = [
@@ -67,37 +91,49 @@ async def available_repos(
             "connected": r["full_name"] in connected,
         }
         for r in repos
-        if not search or search.lower() in r["full_name"].lower()
     ]
-    return {"page": page, "repos": items}
+
+    return {
+        "page": page,
+        "per_page": PER_PAGE,
+        "total": total,
+        # Explicit, so the client never has to infer it from the page length.
+        "has_more": (page * PER_PAGE < total) if total is not None else len(repos) == PER_PAGE,
+        "repos": items,
+    }
 
 
-@router.post("/connect")
+@router.post("/connect", dependencies=[Depends(require_csrf)])
 async def connect_repo(body: ConnectRepoRequest, user: User = Depends(get_current_user)):
-    """Connect a repo (from picker or pasted URL) and start a background sync job."""
+    """Connect a repository and start a background metadata sync."""
     raw = body.full_name or body.url
     if not raw:
         raise HTTPException(status_code=422, detail="Provide full_name or url")
 
     match = REPO_URL_RE.match(raw.strip())
     if not match:
-        raise HTTPException(status_code=422, detail="Invalid repository URL or name. Expected owner/repo or a GitHub URL.")
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid repository. Expected owner/repo or a GitHub URL.",
+        )
     full_name = f"{match.group('owner')}/{match.group('name')}"
 
-    existing = Repository.get_or_none(
+    if Repository.get_or_none(
         (Repository.user == user) & (Repository.full_name == full_name)
-    )
-    if existing:
+    ):
         raise HTTPException(status_code=409, detail=f"{full_name} is already connected")
 
-    # Verify the user can actually access this repo before saving
-    token = decrypt_token(user.access_token_encrypted)
+    # Confirm the user can actually reach it before storing anything.
+    token = get_user_github_token(user)
     try:
-        data = await fetch_repo(token, full_name)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise HTTPException(status_code=404, detail=f"Repository {full_name} not found or you don't have access")
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc.response.status_code}")
+        data = await gh.fetch_repo(token, full_name)
+    except gh.GitHubNotFound:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{full_name} was not found, or your account cannot access it.",
+        )
+    except gh.GitHubError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.safe_message)
 
     repo = Repository.create(
         user=user,
@@ -114,24 +150,27 @@ async def connect_repo(body: ConnectRepoRequest, user: User = Depends(get_curren
     )
     job = SyncJob.create(repository=repo, status="queued", progress="Queued")
 
-    # Fire-and-forget background sync; the request returns immediately
-    asyncio.create_task(run_repo_sync(repo.id, job.id))
-    logger.info("Connected repo %s for %s, sync job %s queued", repo.full_name, user.login, job.id)
+    # Keep a strong reference: the event loop only weakly references a bare
+    # task, so a fire-and-forget create_task can be collected mid-flight.
+    track_task(asyncio.create_task(run_repo_sync(repo.id, job.id)))
 
+    audit("repo.connected", user_id=user.id, repo_id=repo.id, private=repo.private)
     return {"repo": _repo_dict(repo), "sync_job_id": job.id}
 
 
 @router.get("")
 def list_connected(user: User = Depends(get_current_user)):
-    repos = Repository.select().where(Repository.user == user).order_by(Repository.created_at.desc())
+    repos = (
+        Repository.select()
+        .where(Repository.user == user)
+        .order_by(Repository.created_at.desc())
+    )
     return {"repos": [_repo_dict(r) for r in repos]}
 
 
 @router.get("/{repo_id}/sync")
 def sync_status(repo_id: int, user: User = Depends(get_current_user)):
-    repo = Repository.get_or_none((Repository.id == repo_id) & (Repository.user == user))
-    if repo is None:
-        raise HTTPException(status_code=404, detail="Repository not connected")
+    repo = _owned_repo(user, repo_id)
     job = (
         SyncJob.select()
         .where(SyncJob.repository == repo)
@@ -153,6 +192,17 @@ def sync_status(repo_id: int, user: User = Depends(get_current_user)):
     }
 
 
+@router.post("/{repo_id}/sync", dependencies=[Depends(require_csrf)])
+def resync_repo(repo_id: int, user: User = Depends(get_current_user)):
+    """Re-sync metadata. Without this, the open-PR count is frozen at connect time."""
+    repo = _owned_repo(user, repo_id)
+    job = SyncJob.create(repository=repo, status="queued", progress="Queued")
+    repo.sync_status = "pending"
+    repo.save()
+    track_task(asyncio.create_task(run_repo_sync(repo.id, job.id)))
+    return {"repo": _repo_dict(repo), "sync_job_id": job.id}
+
+
 @router.get("/{repo_id}/pulls")
 async def repo_pulls(
     repo_id: int,
@@ -160,21 +210,23 @@ async def repo_pulls(
     page: int = Query(1, ge=1),
     user: User = Depends(get_current_user),
 ):
-    """List pull requests for a connected repo using the user's token."""
-    repo = Repository.get_or_none((Repository.id == repo_id) & (Repository.user == user))
-    if repo is None:
-        raise HTTPException(status_code=404, detail="Repository not connected")
+    """Pull requests for a connected repository, using the user's own token."""
+    repo = _owned_repo(user, repo_id)
+    token = get_user_github_token(user)
 
-    token = decrypt_token(user.access_token_encrypted)
     try:
-        pulls = await list_pull_requests(token, repo.full_name, state=state, page=page)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub API error: {exc.response.status_code}")
+        pulls = await gh.list_pull_requests(
+            token, repo.full_name, state=state, page=page, per_page=PER_PAGE
+        )
+    except gh.GitHubError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.safe_message)
 
     return {
         "repo": repo.full_name,
+        "repo_id": repo.id,
         "state": state,
         "page": page,
+        "has_more": len(pulls) == PER_PAGE,
         "pulls": [
             {
                 "number": p["number"],
@@ -194,10 +246,9 @@ async def repo_pulls(
     }
 
 
-@router.delete("/{repo_id}")
+@router.delete("/{repo_id}", dependencies=[Depends(require_csrf)])
 def disconnect_repo(repo_id: int, user: User = Depends(get_current_user)):
-    repo = Repository.get_or_none((Repository.id == repo_id) & (Repository.user == user))
-    if repo is None:
-        raise HTTPException(status_code=404, detail="Repository not connected")
+    repo = _owned_repo(user, repo_id)
     repo.delete_instance(recursive=True)
+    audit("repo.disconnected", user_id=user.id, repo_id=repo_id)
     return {"ok": True}

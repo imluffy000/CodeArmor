@@ -1,0 +1,45 @@
+OUTPUT CONTRACT
+
+Return a JSON array and nothing else. Each element is an object with exactly
+these keys:
+
+- "file"      — the path as it appears in the diff (e.g. "backend/app/main.py")
+- "line"      — integer line number in the new version of the file, or null if
+                you cannot determine one
+- "severity"  — one of: LOW, MEDIUM, HIGH, CRITICAL
+- "category"  — must be exactly: {{CATEGORY}}
+- "issue"     — what is wrong, in one or two sentences. Name the symbol or
+                construct. No hedging, no restating the category.
+- "suggestion" — how to fix it, in one or two sentences.
+- "code_snippet" — the exact lines from the diff that contain the problem, as a
+                plain string. Omit or use null if you cannot quote them.
+- "suggestion_snippet" — the corrected code, copy-paste ready:
+                * include any imports the fix needs
+                * include every line that must change, not one fragment
+                * give the whole corrected function or block, so it can be
+                  applied without guessing the surrounding context
+                * plain string with real newlines — do NOT wrap it in markdown
+                  fences and do NOT escape it as a nested JSON document
+
+If the diff has no problems in your area, return exactly: []
+
+WORKED EXAMPLE of a single well-formed element (illustrating shape only — do not
+copy its content into your answer):
+
+[
+  {
+    "file": "api/users.py",
+    "line": 42,
+    "severity": "HIGH",
+    "category": "{{CATEGORY}}",
+    "issue": "get_user builds the SQL string with an f-string, so user_id flows straight into the query.",
+    "suggestion": "Use a parameterised query and let the driver bind user_id.",
+    "code_snippet": "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")",
+    "suggestion_snippet": "def get_user(user_id: int):\n    cursor.execute(\n        \"SELECT * FROM users WHERE id = %s\",\n        (user_id,),\n    )\n    return cursor.fetchone()"
+  }
+]
+
+Counter-example — do NOT produce findings like this one:
+  "issue": "This file might have security problems and should be reviewed."
+It names nothing, quotes nothing, and cannot be acted on. Omit the finding
+instead.
