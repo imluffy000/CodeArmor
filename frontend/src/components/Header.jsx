@@ -2,33 +2,27 @@ import React from 'react'
 import LoginButton from './LoginButton'
 import { useAuth } from '../context/AuthContext'
 
-export default function Header(){
+export default function Header() {
   const { user } = useAuth()
+
+  const jump = (id) => (event) => {
+    event.preventDefault()
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   return (
     <header className="site-header">
       <div className="brand-row">
-        <div className="brand-mark" style={{ gap: '0px' }}>
+        <div className="brand-mark">
           <div>
-            <div className="brand-name" style={{ fontSize: '1.4rem', fontWeight: 800 }}>CodeArmor</div>
-            <div className="brand-subtitle">Ship smarter, review faster.</div>
+            <div className="brand-name">CodeArmor</div>
+            <div className="brand-subtitle">Multi-agent pull request review</div>
           </div>
         </div>
 
-        <nav className="nav">
-          <a href="#connect-repos" onClick={(e) => {
-            e.preventDefault()
-            document.getElementById('connect-repos')?.scrollIntoView({ behavior: 'smooth' })
-          }}>Repositories</a>
-          {!user && (
-            <a href="#features" onClick={(e) => {
-              e.preventDefault()
-              document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
-            }}>Features</a>
-          )}
-          <a href="#contact" onClick={(e) => {
-            e.preventDefault()
-            document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })
-          }}>Contact</a>
+        <nav className="nav" aria-label="Main">
+          <a href="#connect-repos" onClick={jump('connect-repos')}>Repositories</a>
+          {!user && <a href="#features" onClick={jump('features')}>What it checks</a>}
         </nav>
       </div>
 

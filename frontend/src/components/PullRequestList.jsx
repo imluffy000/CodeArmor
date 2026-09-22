@@ -1,94 +1,128 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../api'
 
-export default function PullRequestList({ repo, onReviewSuccess, onReviewStart }) {
+const STATES = [
+  { id: 'open', label: 'Open' },
+  { id: 'closed', label: 'Closed' },
+  { id: 'all', label: 'All' },
+]
+
+export default function PullRequestList({ repo, onReviewStart }) {
   const [pulls, setPulls] = useState(null)
+  const [state, setState] = useState('open')
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState('')
-  const [reviewing, setReviewing] = useState(null)
-  const [reviewResult, setReviewResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  // Posting the review to GitHub writes to the repository under the user's
+  // identity, so it is an explicit choice and starts off.
+  const [postToGitHub, setPostToGitHub] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    setPulls(null)
+    setLoading(true)
     setError('')
-    api(`/repos/${repo.id}/pulls?state=open`)
-      .then(data => { if (!cancelled) setPulls(data.pulls) })
-      .catch(err => { if (!cancelled) setError(err.message) })
-    return () => { cancelled = true }
-  }, [repo.id])
+    if (page === 1) setPulls(null)
 
-  const runReview = async (pr) => {
-    setReviewing(pr.number)
-    setReviewResult(null)
-    try {
-      const data = await api('/review', {
-        method: 'POST',
-        body: JSON.stringify({ pr_url: `https://github.com/${repo.full_name}/pull/${pr.number}` }),
+    api(`/repos/${repo.id}/pulls?state=${state}&page=${page}`)
+      .then((data) => {
+        if (cancelled) return
+        setPulls((prev) => (page === 1 ? data.pulls : [...(prev || []), ...data.pulls]))
+        setHasMore(data.has_more)
       })
-      setReviewResult({ number: pr.number, data })
-    } catch (err) {
-      setReviewResult({ number: pr.number, error: err.message })
-    } finally {
-      setReviewing(null)
-    }
+      .catch((err) => { if (!cancelled) setError(err.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+
+    return () => { cancelled = true }
+  }, [repo.id, state, page])
+
+  const changeState = (next) => {
+    setState(next)
+    setPage(1)
   }
 
-  if (error) return <div className="error-banner">{error}</div>
-  if (pulls === null) return <p className="muted-text">Loading pull requests…</p>
-  if (pulls.length === 0) return <p className="muted-text">No open pull requests in this repository.</p>
-
   return (
-    <ul className="pr-list">
-      {pulls.map(pr => (
-        <li key={pr.number} className="pr-item">
-          <div className="pr-item-main">
-            {pr.user_avatar && <img className="pr-avatar" src={pr.user_avatar} alt={pr.user} />}
-            <div className="pr-item-info">
-              <a className="pr-title" href={pr.html_url} target="_blank" rel="noreferrer">
-                #{pr.number} {pr.title}
-              </a>
-              <span className="pr-meta">
-                {pr.draft && <span className="badge badge-pending">draft</span>}{' '}
-                {pr.head} → {pr.base} · by {pr.user}
-              </span>
-            </div>
+    <>
+      <div className="pr-list-header">
+        <h4 className="pr-list-title">Pull requests</h4>
+        <div className="row" role="group" aria-label="Filter pull requests by state">
+          {STATES.map((option) => (
             <button
-              className="btn primary btn-small"
-              disabled={reviewing !== null}
-              onClick={() => {
-                if (onReviewStart) {
-                  onReviewStart(repo.full_name, pr.number)
-                } else {
-                  runReview(pr)
-                }
-              }}
+              key={option.id}
+              className={`btn toggle btn-small ${state === option.id ? 'active' : ''}`}
+              aria-pressed={state === option.id}
+              onClick={() => changeState(option.id)}
             >
-              AI Review
+              {option.label}
             </button>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          {reviewResult && reviewResult.number === pr.number && (
-            reviewResult.error ? (
-              <div className="error-banner">Review failed: {reviewResult.error}</div>
-            ) : (
-              <div className="result pr-review-result" style={{ fontFamily: 'var(--font-sans)', fontSize: '0.95rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                  <strong>{reviewResult.data.stats?.total_issues ?? 0} issue(s) found</strong>
-                  <button 
-                    className="btn primary btn-small" 
-                    onClick={() => onReviewSuccess && onReviewSuccess(repo.full_name, pr.number, reviewResult.data)}
-                  >
-                    View Detailed Report
-                  </button>
+      <label className="pr-post-toggle">
+        <input
+          type="checkbox"
+          checked={postToGitHub}
+          onChange={(e) => setPostToGitHub(e.target.checked)}
+        />
+        <span>
+          Post the finished review to the pull request as a comment
+          <small className="muted-text"> — off by default; you can also publish it afterwards</small>
+        </span>
+      </label>
+
+      {error && <div className="error-banner" role="alert">{error}</div>}
+
+      {pulls === null && loading && <p className="muted-text">Loading pull requests…</p>}
+
+      {pulls !== null && pulls.length === 0 && !loading && (
+        <p className="muted-text">No {state === 'all' ? '' : state} pull requests in this repository.</p>
+      )}
+
+      {pulls !== null && pulls.length > 0 && (
+        <ul className="pr-list">
+          {pulls.map((pr) => (
+            <li key={pr.number} className="pr-item">
+              <div className="pr-item-main">
+                {pr.user_avatar && <img className="pr-avatar" src={pr.user_avatar} alt="" />}
+                <div className="pr-item-info">
+                  <a className="pr-title" href={pr.html_url} target="_blank" rel="noreferrer">
+                    #{pr.number} {pr.title}
+                  </a>
+                  <span className="pr-meta">
+                    {pr.draft && <span className="badge badge-pending">draft</span>}{' '}
+                    {pr.head} → {pr.base} · by {pr.user}
+                  </span>
                 </div>
-                <div style={{ color: 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
-                  {reviewResult.data.summary}
-                </div>
+                <button
+                  className="btn primary btn-small"
+                  onClick={() =>
+                    onReviewStart({
+                      repoId: repo.id,
+                      repoFullName: repo.full_name,
+                      prNumber: pr.number,
+                      prTitle: pr.title,
+                      postToGitHub,
+                    })
+                  }
+                >
+                  AI Review
+                </button>
               </div>
-            )
-          )}
-        </li>
-      ))}
-    </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {hasMore && (
+        <button
+          className="btn secondary btn-small"
+          disabled={loading}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          {loading ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </>
   )
 }

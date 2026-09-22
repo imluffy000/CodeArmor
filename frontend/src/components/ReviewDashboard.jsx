@@ -1,399 +1,337 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, API_BASE } from '../api'
+import MergeGate from './MergeGate'
+import { formatMessageText } from '../lib/markdown.jsx'
 
 const REVIEW_STEPS = [
-  { id: 'fetch_diff', label: 'Fetching PR Diff' },
-  { id: 'security', label: 'Security Analysis Agent' },
-  { id: 'quality', label: 'Code Quality Agent' },
-  { id: 'performance', label: 'Performance Agent' },
-  { id: 'testing', label: 'Testing Agent' },
-  { id: 'architecture', label: 'Architecture Agent' },
-  { id: 'summary', label: 'Summary Generator' },
-  { id: 'github_post', label: 'Posting comments to GitHub' }
+  { id: 'fetch_diff', label: 'Fetching PR and GitHub facts' },
+  { id: 'security', label: 'Security agent' },
+  { id: 'quality', label: 'Code quality agent' },
+  { id: 'performance', label: 'Performance agent' },
+  { id: 'testing', label: 'Testing agent' },
+  { id: 'architecture', label: 'Architecture agent' },
+  { id: 'integration', label: 'Integration & merge-readiness agent' },
+  { id: 'summary', label: 'Summary and merge gate' },
 ]
 
-export default function ReviewDashboard({ repo, prNumber, reviewData, onReset }) {
+const PENDING_STEPS = Object.fromEntries(REVIEW_STEPS.map((s) => [s.id, 'pending']))
+
+// Nothing has arrived for this long: the stream is probably dead rather than slow.
+const WATCHDOG_MS = 180000
+
+export default function ReviewDashboard({ review, onReset }) {
+  const { repoId, repoFullName, prNumber, prTitle, postToGitHub } = review
+
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [stepsStatus, setStepsStatus] = useState(PENDING_STEPS)
+  const [coverageNotice, setCoverageNotice] = useState(null)
   const [selectedFileIndex, setSelectedFileIndex] = useState(0)
+  const [publishState, setPublishState] = useState({ busy: false, error: null })
+  const [copied, setCopied] = useState(null)
+  const [attempt, setAttempt] = useState(0)
+
   const [askInput, setAskInput] = useState('')
   const [askExpanded, setAskExpanded] = useState(false)
   const [chatMessages, setChatMessages] = useState([
     {
       sender: 'ai',
-      text: 'Hi, I’m the AI Review Assistant. Ask me anything about the pull request, code suggestions, or safety checks.'
-    }
+      text: 'Ask me anything about these findings — why one matters, or how to apply a suggested fix.',
+    },
   ])
-
-  const [stepsStatus, setStepsStatus] = useState({
-    fetch_diff: 'pending',
-    security: 'pending',
-    quality: 'pending',
-    performance: 'pending',
-    testing: 'pending',
-    architecture: 'pending',
-    summary: 'pending',
-    github_post: 'pending',
-  })
-  const [loadingReview, setLoadingReview] = useState(!reviewData)
-  const [reviewError, setReviewError] = useState(null)
-  const [currentReviewData, setCurrentReviewData] = useState(reviewData)
-
   const chatLogRef = useRef(null)
 
   useEffect(() => {
-    if (chatLogRef.current) {
-      chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight
-    }
+    if (chatLogRef.current) chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight
   }, [chatMessages])
 
+  // --- the review stream -------------------------------------------------
   useEffect(() => {
-    if (reviewData) {
-      setCurrentReviewData(reviewData)
-      setLoadingReview(false)
-      return
+    let closed = false
+    setLoading(true)
+    setError(null)
+    setCoverageNotice(null)
+    setStepsStatus({ ...PENDING_STEPS, fetch_diff: 'active' })
+
+    const url =
+      `${API_BASE}/reviews/stream?repo_id=${repoId}&pr_number=${prNumber}` +
+      (attempt > 0 ? '&refresh=true' : '')
+    const source = new EventSource(url, { withCredentials: true })
+
+    let watchdog
+    const resetWatchdog = () => {
+      clearTimeout(watchdog)
+      watchdog = setTimeout(() => {
+        if (closed) return
+        closed = true
+        source.close()
+        setError('The review stopped responding. Nothing has arrived for a few minutes.')
+        setLoading(false)
+      }, WATCHDOG_MS)
     }
+    resetWatchdog()
 
-    setLoadingReview(true)
-    setReviewError(null)
-    setStepsStatus({
-      fetch_diff: 'active',
-      security: 'pending',
-      quality: 'pending',
-      performance: 'pending',
-      testing: 'pending',
-      architecture: 'pending',
-      summary: 'pending',
-      github_post: 'pending',
-    })
+    const on = (name, handler) =>
+      source.addEventListener(name, (event) => {
+        resetWatchdog()
+        handler(event)
+      })
 
-    const prUrl = `https://github.com/${repo}/pull/${prNumber}`
-    const eventSource = new EventSource(
-      `${API_BASE}/review/stream?pr_url=${encodeURIComponent(prUrl)}`,
-      { withCredentials: true }
-    )
-
-    eventSource.addEventListener('step', (e) => {
-      const stepEvent = e.data
-      if (stepEvent === 'fetch_diff_done') {
-        setStepsStatus(prev => ({
-          ...prev,
-          fetch_diff: 'done',
-          security: 'active',
-          quality: 'active',
-          performance: 'active',
-          testing: 'active',
-          architecture: 'active',
-        }))
-      } else if (stepEvent === 'summary_start') {
-        setStepsStatus(prev => ({
-          ...prev,
-          security: prev.security === 'active' || prev.security === 'pending' ? 'done' : prev.security,
-          quality: prev.quality === 'active' || prev.quality === 'pending' ? 'done' : prev.quality,
-          performance: prev.performance === 'active' || prev.performance === 'pending' ? 'done' : prev.performance,
-          testing: prev.testing === 'active' || prev.testing === 'pending' ? 'done' : prev.testing,
-          architecture: prev.architecture === 'active' || prev.architecture === 'pending' ? 'done' : prev.architecture,
-          summary: 'active',
-        }))
-      } else if (stepEvent === 'summary_done') {
-        setStepsStatus(prev => ({ ...prev, summary: 'done', github_post: 'active' }))
-      } else if (stepEvent === 'github_post_done') {
-        setStepsStatus(prev => ({ ...prev, github_post: 'done' }))
+    on('step', (event) => {
+      const step = event.data
+      if (step === 'fetch_diff_done') {
+        setStepsStatus((prev) => {
+          const next = { ...prev, fetch_diff: 'done' }
+          REVIEW_STEPS.slice(1, -1).forEach((s) => { next[s.id] = 'active' })
+          return next
+        })
+      } else if (step === 'summary_done') {
+        setStepsStatus((prev) => ({ ...prev, summary: 'done' }))
       }
     })
 
-    eventSource.addEventListener('agent_done', (e) => {
-      const agentName = e.data
-      setStepsStatus(prev => ({ ...prev, [agentName]: 'done' }))
-    })
-
-    eventSource.addEventListener('agent_failed', (e) => {
-      const agentName = e.data
-      setStepsStatus(prev => ({ ...prev, [agentName]: 'failed' }))
-    })
-
-    eventSource.addEventListener('complete', (e) => {
+    on('coverage', (event) => {
       try {
-        const data = JSON.parse(e.data)
-        setCurrentReviewData(data)
-        setLoadingReview(false)
-        eventSource.close()
-      } catch (err) {
-        setReviewError('Failed to parse final review response.')
-        eventSource.close()
-      }
+        setCoverageNotice(JSON.parse(event.data))
+      } catch { /* ignore a malformed coverage frame */ }
     })
 
-    eventSource.addEventListener('error', (e) => {
-      setReviewError(e.data || 'Review process encountered an error.')
-      eventSource.close()
+    // Only update a step this build knows about, so a new backend agent cannot
+    // silently desynchronise the progress count.
+    on('agent_done', (event) => {
+      const agent = event.data
+      setStepsStatus((prev) => (agent in prev ? { ...prev, [agent]: 'done' } : prev))
+    })
+    on('agent_failed', (event) => {
+      const agent = event.data
+      setStepsStatus((prev) => (agent in prev ? { ...prev, [agent]: 'failed' } : prev))
     })
 
-    eventSource.onerror = (e) => {
-      if (eventSource.readyState === EventSource.CLOSED) {
-        return
+    on('cached', () => {
+      setStepsStatus(Object.fromEntries(REVIEW_STEPS.map((s) => [s.id, 'done'])))
+    })
+
+    on('complete', (event) => {
+      clearTimeout(watchdog)
+      closed = true
+      try {
+        setData(JSON.parse(event.data))
+        setStepsStatus((prev) => {
+          const next = { ...prev }
+          Object.keys(next).forEach((k) => { if (next[k] === 'active') next[k] = 'done' })
+          return next
+        })
+        setLoading(false)
+      } catch {
+        setError('The finished review could not be read.')
+        setLoading(false)
       }
-      setReviewError('Connection to review stream lost.')
-      eventSource.close()
+      source.close()
+    })
+
+    // A server-sent `error` frame and a transport failure are both delivered as
+    // an "error" event. Only the former carries data, which is how they are
+    // told apart — otherwise a dropped connection masquerades as a pipeline
+    // error and the real message never shows.
+    source.addEventListener('error', (event) => {
+      if (typeof event.data !== 'string') return
+      clearTimeout(watchdog)
+      closed = true
+      setError(event.data)
+      setLoading(false)
+      source.close()
+    })
+
+    source.onerror = () => {
+      if (closed || source.readyState !== EventSource.CLOSED) return
+      clearTimeout(watchdog)
+      closed = true
+      setError('Lost the connection to the review stream.')
+      setLoading(false)
     }
 
     return () => {
-      eventSource.close()
+      closed = true
+      clearTimeout(watchdog)
+      source.close()
     }
-  }, [repo, prNumber, reviewData])
+  }, [repoId, prNumber, attempt])
 
-  // Extract file list from currentReviewData
-  const files = currentReviewData?.files_with_issues || []
+  // Publish only after the review exists, and only when the user asked for it.
+  const publish = useCallback(
+    async (reviewId) => {
+      setPublishState({ busy: true, error: null })
+      try {
+        await api(`/reviews/${reviewId}/publish`, { method: 'POST' })
+        setData((prev) => (prev ? { ...prev, posted_to_github: true, github_error: null } : prev))
+      } catch (err) {
+        setPublishState({ busy: false, error: err.message })
+        return
+      }
+      setPublishState({ busy: false, error: null })
+    },
+    []
+  )
+
+  const publishedRef = useRef(false)
+  useEffect(() => {
+    if (postToGitHub && data?.review_id && !data.posted_to_github && !publishedRef.current) {
+      publishedRef.current = true
+      publish(data.review_id)
+    }
+  }, [postToGitHub, data, publish])
+
+  const files = data?.files_with_issues || []
   const activeFile = files[selectedFileIndex] || null
+  useEffect(() => { setSelectedFileIndex(0) }, [data?.review_id])
 
-  // Calculate completed steps based on stepsStatus
-  const completedSteps = REVIEW_STEPS.filter(step => stepsStatus[step.id] === 'done').length
+  const stats = data?.stats
+  const severity = stats?.by_severity || {}
+  const score = stats?.score ?? 100
+  const scoreLabel = stats?.score_label ?? ''
+  const completedSteps = REVIEW_STEPS.filter((s) => stepsStatus[s.id] === 'done').length
 
-  // Calculate severity counts (case-insensitive and summed)
-  const severityMap = {}
-  if (currentReviewData?.stats?.by_severity) {
-    for (const [key, value] of Object.entries(currentReviewData.stats.by_severity)) {
-      severityMap[key.toLowerCase()] = value
-    }
-  }
-  const criticalCount = (severityMap.critical || 0) + (severityMap.high || 0)
-  const warningCount = (severityMap.warning || 0) + (severityMap.medium || 0)
-  const hintCount = (severityMap.info || 0) + (severityMap.low || 0)
-
-  // Calculate score dynamically based on severity weights
-  const totalIssues = currentReviewData?.stats?.total_issues ?? 0
-  const score = Math.max(0, 100 - (criticalCount * 15 + warningCount * 8 + hintCount * 3))
-  const scoreLabel = score >= 90 ? 'Excellent' : score >= 75 ? 'Good' : score >= 50 ? 'Fair' : 'Needs Work'
-
-  // Calculate SVG circle properties
   const radius = 58
   const circumference = 2 * Math.PI * radius
   const strokeDashoffset = circumference - (circumference * score) / 100
 
-  // Helper to format response messages with basic markdown support (code blocks, inline code)
-  const formatInline = (line, keyPrefix) => {
-    const inlineParts = line.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g)
-    return inlineParts.map((subPart, subIdx) => {
-      if (subPart.startsWith('`') && subPart.endsWith('`')) {
-        return (
-          <code key={`${keyPrefix}-${subIdx}`} style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.05)',
-            padding: '2px 4px',
-            borderRadius: '4px',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.85em',
-            wordBreak: 'break-all'
-          }}>
-            {subPart.slice(1, -1)}
-          </code>
-        );
-      }
-      if (subPart.startsWith('**') && subPart.endsWith('**')) {
-        return <strong key={`${keyPrefix}-${subIdx}`}>{subPart.slice(2, -2)}</strong>;
-      }
-      return subPart;
-    });
-  };
-
-  const formatMessageText = (text) => {
-    if (!text) return '';
-    const parts = text.split(/(```[\s\S]*?```)/g);
-    return parts.map((part, idx) => {
-      if (part.startsWith('```')) {
-        const lines = part.slice(3, -3).trim().split('\n');
-        let code = part.slice(3, -3).trim();
-        if (lines.length > 0 && /^[a-zA-Z0-9_-]+$/.test(lines[0])) {
-          code = lines.slice(1).join('\n');
-        }
-        return (
-          <pre key={idx} style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.05)',
-            padding: '8px',
-            borderRadius: '6px',
-            overflowX: 'auto',
-            margin: '8px 0',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.78rem',
-            borderLeft: '3px solid var(--text-dark)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all'
-          }}>
-            <code>{code}</code>
-          </pre>
-        );
-      }
-
-      const lines = part.split('\n');
-      return (
-        <span key={idx} style={{ whiteSpace: 'pre-wrap' }}>
-          {lines.map((line, lineIdx) => {
-            const headingMatch = line.match(/^(#{1,4})\s+(.*)$/);
-            const bulletMatch = line.match(/^(\s*)[-*]\s+(.*)$/);
-            let content;
-            if (headingMatch) {
-              content = (
-                <strong style={{ display: 'inline-block', fontSize: '0.95em', marginTop: lineIdx > 0 ? 6 : 0 }}>
-                  {formatInline(headingMatch[2], `${idx}-${lineIdx}`)}
-                </strong>
-              );
-            } else if (bulletMatch) {
-              content = (
-                <span style={{ display: 'inline-flex', gap: 6, paddingLeft: bulletMatch[1].length * 6 }}>
-                  <span style={{ flexShrink: 0 }}>•</span>
-                  <span>{formatInline(bulletMatch[2], `${idx}-${lineIdx}`)}</span>
-                </span>
-              );
-            } else {
-              content = formatInline(line, `${idx}-${lineIdx}`);
-            }
-            return (
-              <React.Fragment key={lineIdx}>
-                {lineIdx > 0 && '\n'}
-                {content}
-              </React.Fragment>
-            );
-          })}
-        </span>
-      );
-    });
-  };
-
-  // Handle Ask AI interaction using the real backend /review/chat endpoint
-  const handleAskSubmit = async (e) => {
-    e.preventDefault()
-    if (!askInput.trim()) return
-
-    const userMsg = askInput.trim()
-    setChatMessages((prev) => [...prev, { sender: 'user', text: userMsg }])
-    setAskInput('')
-
-    // Add a loading placeholder
-    setChatMessages((prev) => [...prev, { sender: 'ai', text: 'Thinking...', loading: true }])
-
-    // Build chat history matching the format expected by the backend
-    const history = chatMessages.map(msg => ({ sender: msg.sender, text: msg.text }))
-
-    // Flatten all issues from files to pass as context
-    const flatIssues = []
-    if (currentReviewData && currentReviewData.files_with_issues) {
-      currentReviewData.files_with_issues.forEach(file => {
-        if (file.issues) {
-          file.issues.forEach(issue => {
-            flatIssues.push({
-              file: file.path,
-              severity: issue.severity,
-              category: issue.category,
-              problem: issue.problem,
-              recommendation: issue.recommendation,
-              code_snippet: issue.code_snippet,
-              suggestion_snippet: issue.suggestion_snippet
-            })
-          })
-        }
-      })
+  const copy = async (text, key) => {
+    try {
+      await navigator.clipboard.writeText(text ?? '')
+      setCopied(key)
+      setTimeout(() => setCopied(null), 1800)
+    } catch {
+      setCopied(`${key}:failed`)
+      setTimeout(() => setCopied(null), 2500)
     }
+  }
+
+  const handleAsk = async (event) => {
+    event.preventDefault()
+    const question = askInput.trim()
+    if (!question || !data?.review_id) return
+
+    const history = chatMessages.filter((m) => !m.greeting).map((m) => ({ sender: m.sender, text: m.text }))
+    setChatMessages((prev) => [...prev, { sender: 'user', text: question }])
+    setAskInput('')
+    setChatMessages((prev) => [...prev, { sender: 'ai', text: 'Thinking…', loading: true }])
 
     try {
-      const data = await api('/review/chat', {
+      const response = await api('/reviews/chat', {
         method: 'POST',
-        body: JSON.stringify({
-          message: userMsg,
-          history: history,
-          issues: flatIssues
-        })
+        body: JSON.stringify({ review_id: data.review_id, message: question, history }),
       })
-
-      setChatMessages((prev) => {
-        const filtered = prev.filter(msg => !msg.loading)
-        return [...filtered, { sender: 'ai', text: data.response }]
-      })
+      setChatMessages((prev) => [
+        ...prev.filter((m) => !m.loading),
+        { sender: 'ai', text: response.response },
+      ])
     } catch (err) {
-      setChatMessages((prev) => {
-        const filtered = prev.filter(msg => !msg.loading)
-        return [...filtered, { sender: 'ai', text: `Error: ${err.message}` }]
-      })
+      setChatMessages((prev) => [
+        ...prev.filter((m) => !m.loading),
+        { sender: 'ai', text: `Sorry — ${err.message}` },
+      ])
     }
   }
 
-  // Handle suggestion copying
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text)
-    alert('Code suggestion copied to clipboard!')
-  }
+  const summaryBlocks = useMemo(() => {
+    const raw = (data?.summary || '').trim()
+    if (!raw) return null
+    const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean)
+    return {
+      verdict: lines.find((l) => !l.startsWith('- ') && !l.startsWith('• ') && !/^recommendation:/i.test(l)),
+      bullets: lines.filter((l) => l.startsWith('- ') || l.startsWith('• ')),
+      recommendation: lines.find((l) => /^recommendation:/i.test(l)),
+    }
+  }, [data?.summary])
 
-  if (loadingReview) {
+  // ------------------------------------------------------------------ views
+
+  if (loading || error) {
     return (
       <div className="dashboard-shell">
-        {/* Sidebar Navigation */}
         <aside className="side-nav">
-          <div className="side-brand" style={{ cursor: 'pointer', gap: '0px' }} onClick={onReset}>
-            <div>
-              <div className="brand-title" style={{ fontSize: '1.25rem', fontWeight: 800 }}>CodeArmor</div>
-              <div className="brand-label">Dashboard Workspace</div>
-            </div>
+          <div className="side-brand" style={{ cursor: 'pointer' }} onClick={onReset}>
+            <div className="brand-title">CodeArmor</div>
+            <div className="brand-label">Review workspace</div>
           </div>
-
-          <button className="nav-cta" onClick={onReset}>
-            ← Cancel Review
-          </button>
-
-          <nav className="side-menu">
-            <a className="nav-link active" href="#" onClick={(e) => e.preventDefault()}>
-              <span className="material-symbols-outlined" style={{ marginRight: 8, fontSize: '1.2rem' }}>sync</span>
-              Reviewing…
-            </a>
-          </nav>
+          <button className="nav-cta" onClick={onReset}>← Back to repositories</button>
         </aside>
 
-        {/* Main Dashboard Space */}
         <div className="dashboard-main">
           <header className="topbar">
             <div className="topbar-left">
-              <div className="topbar-title">PR #{prNumber || 'Review'}</div>
+              <div className="topbar-title">PR #{prNumber}</div>
               <div className="topbar-bread">
-                <span>{repo}</span>
+                <span>{repoFullName}</span>
                 <span className="chevron">›</span>
-                <span className="status" style={{ backgroundColor: '#fbbf24', color: '#09090c' }}>Analyzing</span>
+                <span className="status" style={{ backgroundColor: '#fbbf24', color: '#09090c' }}>
+                  {error ? 'Stopped' : 'Analysing'}
+                </span>
               </div>
-            </div>
-            <div className="topbar-right">
-              <button className="topbar-button secondary" onClick={onReset}>
-                Cancel
-              </button>
             </div>
           </header>
 
-          <main className="workspace-area" style={{ padding: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ width: '100%', maxWidth: '800px' }}>
-              {reviewError ? (
-                <div className="error-banner" style={{ padding: '24px', borderRadius: '16px' }}>
-                  <h3 style={{ margin: '0 0 10px 0', color: 'var(--error-red)' }}>Analysis Pipeline Failed</h3>
-                  <p style={{ margin: '0 0 20px 0', color: 'var(--text-gray)' }}>{reviewError}</p>
-                  <button className="btn primary" onClick={onReset}>Back to Repositories</button>
+          <main className="workspace-area" style={{ padding: 40, justifyContent: 'center' }}>
+            <div style={{ width: '100%', maxWidth: 820 }}>
+              {error ? (
+                <div className="error-banner" role="alert" style={{ padding: 24, borderRadius: 16 }}>
+                  <h3 style={{ margin: '0 0 10px', color: 'var(--error-red)' }}>The review did not finish</h3>
+                  <p style={{ margin: '0 0 20px', color: 'var(--text-gray)' }}>{error}</p>
+                  <div className="row">
+                    <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>
+                      Try again
+                    </button>
+                    <button className="btn secondary" onClick={onReset}>Back to repositories</button>
+                  </div>
                 </div>
               ) : (
-                <div className="active-review-panel">
+                <div className="active-review-panel" role="status" aria-live="polite">
                   <div className="active-review-header">
                     <div>
-                      <h3>Active Review Progress</h3>
-                      <p className="muted-text" style={{ marginTop: '4px' }}>Running test suites & static analysis for {repo}</p>
+                      <h3>Reviewing {repoFullName} #{prNumber}</h3>
+                      <p className="muted-text" style={{ marginTop: 4 }}>
+                        {prTitle || 'Six agents are reading this pull request in parallel.'}
+                      </p>
                     </div>
-                    <div className="progress-bar-container">
-                      <div className="progress-bar-fill" style={{ width: `${(completedSteps / REVIEW_STEPS.length) * 100}%` }}></div>
+                    <div
+                      className="progress-bar-container"
+                      role="progressbar"
+                      aria-valuenow={completedSteps}
+                      aria-valuemin={0}
+                      aria-valuemax={REVIEW_STEPS.length}
+                      aria-label="Review progress"
+                    >
+                      <div
+                        className="progress-bar-fill"
+                        style={{ width: `${(completedSteps / REVIEW_STEPS.length) * 100}%` }}
+                      />
                     </div>
                   </div>
 
+                  {coverageNotice && (
+                    <p className="muted-text" style={{ marginBottom: 12 }}>
+                      Large pull request: about {coverageNotice.reviewed_percent}% of the diff fits
+                      in this review. {coverageNotice.files_not_reviewed?.length || 0} file(s) will
+                      not be read.
+                    </p>
+                  )}
+
                   <div className="review-steps-grid">
                     {REVIEW_STEPS.map((step) => {
-                      const status = stepsStatus[step.id] || 'pending';
-
+                      const status = stepsStatus[step.id] || 'pending'
                       return (
                         <div key={step.id} className={`step-card ${status}`}>
                           <div className="step-card-status">
-                            <span className={`status-dot ${status}`}></span>
+                            <span className={`status-dot ${status}`} />
                           </div>
                           <div className="step-card-info">
                             <span className="step-name">{step.label}</span>
                             <span className="step-status-text">
-                              {status === 'done' ? 'Completed' : status === 'active' ? 'Analyzing…' : status === 'failed' ? 'Failed' : 'Queued'}
+                              {status === 'done' ? 'Done'
+                                : status === 'active' ? 'Working…'
+                                : status === 'failed' ? 'Failed'
+                                : 'Queued'}
                             </span>
                           </div>
                         </div>
@@ -403,10 +341,10 @@ export default function ReviewDashboard({ repo, prNumber, reviewData, onReset })
 
                   <div className="active-review-actions">
                     <button className="btn secondary btn-small" onClick={onReset}>
-                      Cancel Review
+                      Stop watching
                     </button>
                     <div className="step-counter">
-                      Pipeline Step {Math.min(completedSteps + 1, REVIEW_STEPS.length)} of {REVIEW_STEPS.length}
+                      {completedSteps} of {REVIEW_STEPS.length} complete
                     </div>
                   </div>
                 </div>
@@ -418,116 +356,110 @@ export default function ReviewDashboard({ repo, prNumber, reviewData, onReset })
     )
   }
 
+  const readiness = data?.merge_readiness || {}
+  const coverage = data?.coverage || {}
+  const agentErrors = data?.agent_errors || []
+
   return (
     <div className="dashboard-shell">
-      {/* Sidebar Navigation */}
       <aside className="side-nav">
-        <div className="side-brand" style={{ cursor: 'pointer', gap: '0px' }} onClick={onReset}>
-          <div>
-            <div className="brand-title" style={{ fontSize: '1.25rem', fontWeight: 800 }}>CodeArmor</div>
-            <div className="brand-label">Dashboard Workspace</div>
-          </div>
+        <div className="side-brand" style={{ cursor: 'pointer' }} onClick={onReset}>
+          <div className="brand-title">CodeArmor</div>
+          <div className="brand-label">Review workspace</div>
         </div>
-
-        <button className="nav-cta" onClick={onReset}>
-          ← Back to Repos
-        </button>
-
-        <nav className="side-menu">
-          <a className="nav-link active" href="#" onClick={(e) => e.preventDefault()}>
-            <span className="material-symbols-outlined" style={{ marginRight: 8, fontSize: '1.2rem' }}>dashboard</span>
-            Dashboard
-          </a>
-          <a className="nav-link" href="#" onClick={(e) => { e.preventDefault(); onReset(); }}>
-            <span className="material-symbols-outlined" style={{ marginRight: 8, fontSize: '1.2rem' }}>list</span>
-            Repositories
-          </a>
-        </nav>
+        <button className="nav-cta" onClick={onReset}>← Back to repositories</button>
 
         <div className="side-footer">
           <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-            Repository:
-            <div style={{ fontWeight: 'bold', color: 'var(--text-dark)', wordBreak: 'break-all' }}>{repo}</div>
+            Repository
+            <div style={{ fontWeight: 'bold', color: 'var(--text-dark)', wordBreak: 'break-all' }}>
+              {repoFullName}
+            </div>
           </div>
-          <a className="footer-link" href="#" onClick={(e) => e.preventDefault()}>Support & Docs</a>
+          {data?.created_at && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Reviewed {new Date(data.created_at).toLocaleString()}
+              {data.cached && ' (saved result)'}
+            </div>
+          )}
         </div>
       </aside>
 
-      {/* Main Dashboard Space */}
       <div className="dashboard-main">
-        {/* Top bar */}
         <header className="topbar">
           <div className="topbar-left">
-            <div className="topbar-title">PR #{prNumber || 'Review'}</div>
+            <div className="topbar-title">PR #{prNumber}</div>
             <div className="topbar-bread">
-              <span>{repo}</span>
+              <span>{repoFullName}</span>
               <span className="chevron">›</span>
-              <span className="status">AI Reviewed</span>
+              <span className={`status status-${readiness.verdict || 'clear'}`}>
+                {readiness.verdict === 'blocked' ? 'Not ready to merge'
+                  : readiness.verdict === 'caution' ? 'Merge with care'
+                  : 'Nothing blocking'}
+              </span>
             </div>
           </div>
-
           <div className="topbar-right">
-            <button className="topbar-button secondary" onClick={() => copyToClipboard(currentReviewData?.summary || '')}>
-              Copy Summary
+            <button
+              className="topbar-button secondary"
+              onClick={() => copy(data?.summary, 'summary')}
+            >
+              {copied === 'summary' ? 'Copied' : copied === 'summary:failed' ? 'Copy failed' : 'Copy summary'}
             </button>
-            <button className="topbar-button primary" onClick={onReset}>
-              Close Report
-            </button>
+            {!data?.posted_to_github && (
+              <button
+                className="topbar-button secondary"
+                disabled={publishState.busy}
+                onClick={() => publish(data.review_id)}
+              >
+                {publishState.busy ? 'Posting…' : 'Post to GitHub'}
+              </button>
+            )}
+            <button className="topbar-button primary" onClick={onReset}>Close</button>
           </div>
         </header>
 
-        {/* Workspace Layout */}
         <main className="workspace-area">
-          {/* Code & Issues List */}
           <section className="code-column">
-            {/* PR Overview Card */}
-            <div className="review-header">
-              <div>
-                <div className="review-tag">{repo}</div>
-                <p className="review-meta">
-                  Reviewed branch merges • Found <span className="mono bold">{totalIssues}</span> issues across <span className="mono bold">{currentReviewData?.stats?.files_affected || files.length}</span> file(s).
-                </p>
-              </div>
-              <div className="review-statuses">
-                <span className="status-chip success">Review Complete</span>
-              </div>
-            </div>
+            <MergeGate readiness={readiness} coverage={coverage} agentErrors={agentErrors} />
 
-            {currentReviewData?.github_error && (
-              <div className="error-banner" style={{ marginTop: '0px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.2rem' }}>warning</span>
-                  <strong>Review Posted Locally Only</strong>
-                </div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 'normal', color: 'var(--text-gray)' }}>
-                  We couldn't write the review comments back to your GitHub Pull Request because:
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', backgroundColor: 'rgba(0, 0, 0, 0.2)', padding: '6px 10px', borderRadius: '4px', marginTop: '6px', border: '1px solid var(--border-light)', wordBreak: 'break-all' }}>
-                    {currentReviewData.github_error}
-                  </div>
-                </div>
+            {data?.posted_to_github && (
+              <p className="muted-text">Posted to the pull request as a comment.</p>
+            )}
+            {publishState.error && (
+              <div className="error-banner" role="alert">
+                Could not post to GitHub: {publishState.error}
+              </div>
+            )}
+            {data?.github_error && (
+              <div className="error-banner" role="alert">
+                Could not post to GitHub: {data.github_error}
               </div>
             )}
 
-            {/* File List tabs (Sage Green pastel background) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontFamily: 'var(--font-headings)', fontSize: '1.2rem', fontWeight: 600 }}>Files with Issues</div>
+              <div style={{ fontFamily: 'var(--font-headings)', fontSize: '1.2rem', fontWeight: 600 }}>
+                Findings by file
+              </div>
               {files.length === 0 ? (
                 <div className="file-header" style={{ backgroundColor: 'var(--bg-card-clay)' }}>
                   <div className="file-path">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    <span className="mono bold">No issues found in files!</span>
+                    <span className="material-symbols-outlined" aria-hidden="true">check_circle</span>
+                    <span className="mono bold">No findings in the reviewed files</span>
                   </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }} role="tablist">
                   {files.map((file, idx) => (
                     <button
                       key={file.path}
+                      role="tab"
+                      aria-selected={idx === selectedFileIndex}
                       className={`btn toggle ${idx === selectedFileIndex ? 'active' : ''}`}
                       onClick={() => setSelectedFileIndex(idx)}
                       style={{ fontSize: '0.85rem' }}
+                      title={file.path}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', marginRight: 4 }}>description</span>
                       {file.path.split('/').pop()} ({file.issue_count})
                     </button>
                   ))}
@@ -535,107 +467,102 @@ export default function ReviewDashboard({ repo, prNumber, reviewData, onReset })
               )}
             </div>
 
-            {/* Selected File Details */}
             {activeFile && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div className="file-header">
                   <div className="file-path">
-                    <span className="material-symbols-outlined">description</span>
+                    <span className="material-symbols-outlined" aria-hidden="true">description</span>
                     <span className="mono bold">{activeFile.path}</span>
                   </div>
                   <div className="file-meta">
-                    <span>{activeFile.issue_count} issue(s) detected</span>
+                    <span>{activeFile.issue_count} finding(s)</span>
                   </div>
                 </div>
 
-                {/* Render the list of issues for the active file */}
-                {activeFile.issues?.map((issue, index) => (
-                  <div key={index} className="ai-card danger">
-                    <div className="ai-card-header">
-                      <span className="ai-pill" style={{
-                        backgroundColor: issue.severity.toLowerCase() === 'critical' || issue.severity.toLowerCase() === 'high' ? 'var(--error-red)' : 'var(--text-dark)'
-                      }}>
-                        {issue.severity.toUpperCase()}
-                      </span>
-                      <span>Category: {issue.category}</span>
-                    </div>
-
-                    <h4 style={{ fontFamily: 'var(--font-headings)', margin: '0 0 10px 0', fontSize: '1.2rem' }}>Problem</h4>
-                    <p style={{ margin: '0 0 16px 0', fontSize: '0.95rem', lineHeight: 1.5 }}>{issue.problem}</p>
-
-                    {issue.code_snippet && (
-                      <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--error-red)' }}>code</span>
-                          Original Code Snippet
-                        </div>
-                        <div className="code-panel" style={{ borderLeft: '3px solid var(--error-red)', padding: '12px' }}>
-                          <pre style={{ margin: 0, overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}><code style={{ color: '#fca5a5' }}>{issue.code_snippet}</code></pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {issue.recommendation && (
-                      <>
-                        <h4 style={{ fontFamily: 'var(--font-headings)', margin: '0 0 10px 0', fontSize: '1.1rem', color: 'var(--success-green)' }}>Recommendation</h4>
-                        {issue.recommendation.includes('\n') || issue.recommendation.startsWith('`') || issue.recommendation.includes(' ') && issue.recommendation.length > 50 ? (
-                          <div className="code-suggestion" style={{ marginBottom: '16px' }}>
-                            <pre><code>{issue.recommendation.replace(/```/g, '')}</code></pre>
-                          </div>
-                        ) : (
-                          <p style={{ margin: '0 0 16px 0', fontSize: '0.9rem', lineHeight: 1.5 }} className="code-inline">{issue.recommendation}</p>
+                {activeFile.issues?.map((issue, index) => {
+                  const level = String(issue.severity || '').toUpperCase()
+                  const isBlocking = level === 'CRITICAL' || level === 'HIGH'
+                  return (
+                    <div key={index} className={`ai-card ${isBlocking ? 'danger' : ''}`}>
+                      <div className="ai-card-header">
+                        <span
+                          className="ai-pill"
+                          aria-label={`Severity: ${level}`}
+                          style={{ backgroundColor: isBlocking ? 'var(--error-red)' : 'var(--text-dark)' }}
+                        >
+                          {level}
+                        </span>
+                        <span>{issue.category}</span>
+                        {issue.line ? <span className="muted-text">line {issue.line}</span> : null}
+                        {issue.agreement > 1 && (
+                          <span className="muted-text">{issue.agreement} agents agreed</span>
                         )}
-                      </>
-                    )}
-
-                    {issue.suggestion_snippet && (
-                      <div style={{ marginBottom: '20px', marginTop: '12px' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--success-green)' }}>bolt</span>
-                          Suggested Fix Snippet
-                        </div>
-                        <div className="code-panel" style={{ borderLeft: '3px solid var(--success-green)', padding: '12px' }}>
-                          <pre style={{ margin: 0, overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}><code style={{ color: '#a7f3d0' }}>{issue.suggestion_snippet}</code></pre>
-                        </div>
                       </div>
-                    )}
 
-                    <div className="ai-actions" style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                      {issue.suggestion_snippet && (
-                        <button className="btn primary small" onClick={() => copyToClipboard(issue.suggestion_snippet)}>
-                          <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>content_copy</span>
-                          Copy Solution Code
-                        </button>
+                      <h4 className="ai-card-title">Problem</h4>
+                      <p className="ai-card-text">{issue.problem}</p>
+
+                      {issue.code_snippet && (
+                        <div style={{ marginBottom: 20 }}>
+                          <div className="snippet-label">Current code</div>
+                          <div className="code-panel" style={{ borderLeft: '3px solid var(--error-red)', padding: 12 }}>
+                            <pre className="snippet"><code style={{ color: '#fca5a5' }}>{issue.code_snippet}</code></pre>
+                          </div>
+                        </div>
                       )}
+
                       {issue.recommendation && (
-                        <button className={`btn small ${issue.suggestion_snippet ? 'secondary' : 'primary'}`} onClick={() => copyToClipboard(issue.recommendation)}>
-                          {!issue.suggestion_snippet && <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>content_copy</span>}
-                          Copy Explanation
-                        </button>
+                        <>
+                          <h4 className="ai-card-title" style={{ color: 'var(--success-green)' }}>
+                            Recommendation
+                          </h4>
+                          {/* Prose renders as prose. The old condition was
+                              `A || B || (C && D)` by operator precedence, so any
+                              recommendation over 50 characters containing a space
+                              — i.e. almost all of them — rendered as code. */}
+                          <div className="ai-card-text">{formatMessageText(issue.recommendation)}</div>
+                        </>
                       )}
+
+                      {issue.suggestion_snippet && (
+                        <div style={{ marginTop: 12, marginBottom: 20 }}>
+                          <div className="snippet-label">Suggested fix</div>
+                          <div className="code-panel" style={{ borderLeft: '3px solid var(--success-green)', padding: 12 }}>
+                            <pre className="snippet"><code style={{ color: '#a7f3d0' }}>{issue.suggestion_snippet}</code></pre>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="ai-actions" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                        {issue.suggestion_snippet && (
+                          <button
+                            className="btn primary small"
+                            onClick={() => copy(issue.suggestion_snippet, `fix-${index}`)}
+                          >
+                            {copied === `fix-${index}` ? 'Copied'
+                              : copied === `fix-${index}:failed` ? 'Copy failed'
+                              : 'Copy fix'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </section>
 
-          {/* Insights Panel (Clay/Beige background) */}
           <aside className="insights-column">
-            {/* Score Ring Widget */}
             <div className="score-widget">
               <div className="score-ring">
-                <svg viewBox="0 0 128 128">
+                <svg viewBox="0 0 128 128" role="img" aria-label={`Review score ${score} out of 100: ${scoreLabel}`}>
                   <circle className="ring-bg" cx="64" cy="64" r={radius} />
                   <circle
                     className="ring-fill"
                     cx="64"
                     cy="64"
                     r={radius}
-                    style={{
-                      strokeDasharray: circumference,
-                      strokeDashoffset: strokeDashoffset
-                    }}
+                    style={{ strokeDasharray: circumference, strokeDashoffset }}
                   />
                 </svg>
                 <div className="score-label">
@@ -643,140 +570,109 @@ export default function ReviewDashboard({ repo, prNumber, reviewData, onReset })
                   <small>{scoreLabel}</small>
                 </div>
               </div>
-              <h4>Review Quality Score</h4>
-              <p>PR scored {score}/100. Lower scores indicate more critical recommendations.</p>
+              <h4>Review score</h4>
+              <p>
+                Computed from finding severity and how much of the diff was read.
+                {coverage.truncated && ` Capped because only ${coverage.reviewed_percent}% was reviewed.`}
+              </p>
             </div>
 
-            {/* Severity Distribution Widgets */}
-            <div className="stats-grid">
-              <div className="stat-card danger">
-                <span>{criticalCount}</span>
-                <small>Critical</small>
-              </div>
-              <div className="stat-card secondary">
-                <span>{warningCount}</span>
-                <small>Warning</small>
-              </div>
-              <div className="stat-card tertiary">
-                <span>{hintCount}</span>
-                <small>Hints/Info</small>
-              </div>
+            {/* Four buckets matching the real vocabulary. Folding HIGH into a
+                tile labelled "Critical" overstated severity in a security
+                product and could not be reconciled with the per-issue pills. */}
+            <div className="stats-grid stats-grid-4">
+              <div className="stat-card danger"><span>{severity.CRITICAL ?? 0}</span><small>Critical</small></div>
+              <div className="stat-card danger"><span>{severity.HIGH ?? 0}</span><small>High</small></div>
+              <div className="stat-card secondary"><span>{severity.MEDIUM ?? 0}</span><small>Medium</small></div>
+              <div className="stat-card tertiary"><span>{severity.LOW ?? 0}</span><small>Low</small></div>
             </div>
 
-            {/* Executive Summary */}
             <div className="summary-card">
               <h4>
-                <span className="material-symbols-outlined summary-icon">summarize</span>
-                Executive Summary
+                <span className="material-symbols-outlined summary-icon" aria-hidden="true">summarize</span>
+                Summary
               </h4>
-              {(() => {
-                const raw = (currentReviewData?.summary || '').trim()
-                if (!raw) return <p>No review summary provided.</p>
+              {!summaryBlocks ? (
+                <p>No summary was produced.</p>
+              ) : (
+                <div className="summary-body">
+                  {summaryBlocks.verdict && <p className="summary-verdict">{summaryBlocks.verdict}</p>}
+                  {summaryBlocks.bullets.length > 0 && (
+                    <ul className="summary-points">
+                      {summaryBlocks.bullets.map((b, i) => (
+                        <li key={i}>{b.replace(/^[-•]\s*/, '')}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {summaryBlocks.recommendation && (
+                    <div className="summary-recommendation">
+                      <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                      <span>{summaryBlocks.recommendation.replace(/^recommendation:\s*/i, '')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-                const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-                const bullets = lines.filter(l => l.startsWith('- ') || l.startsWith('• '))
-                const recLine = lines.find(l => /^recommendation:/i.test(l))
-                const verdict = lines.find(l => !l.startsWith('- ') && !l.startsWith('• ') && !/^recommendation:/i.test(l))
-
-                // Fallback: unstructured summary from older reviews
-                if (!bullets.length && !recLine) return <p>{raw}</p>
-
+            {/* Rendered from what actually happened. A hardcoded all-green
+                timeline claimed "Completed Audit Report" even when agents failed. */}
+            <div className="timeline-card">
+              <h4>What ran</h4>
+              {REVIEW_STEPS.map((step) => {
+                const status = stepsStatus[step.id] || 'pending'
                 return (
-                  <div className="summary-body">
-                    {verdict && <p className="summary-verdict">{verdict}</p>}
-                    {bullets.length > 0 && (
-                      <ul className="summary-points">
-                        {bullets.map((b, i) => (
-                          <li key={i}>{b.replace(/^[-•]\s*/, '')}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {recLine && (
-                      <div className="summary-recommendation">
-                        <span className="material-symbols-outlined">arrow_forward</span>
-                        <span>{recLine.replace(/^recommendation:\s*/i, '')}</span>
-                      </div>
-                    )}
+                  <div key={step.id} className={`timeline-step ${status}`}>
+                    <span />
+                    {step.label}
+                    {status === 'failed' && <em> — failed</em>}
                   </div>
                 )
-              })()}
+              })}
             </div>
 
-            {/* Analysis Timeline */}
-            <div className="timeline-card">
-              <h4>Analysis Timeline</h4>
-              <div className="timeline-step done"><span />Fetched PR Data</div>
-              <div className="timeline-step done"><span />Parsed Diff Tree</div>
-              <div className="timeline-step done"><span />Ran AI Review Agents</div>
-              <div className="timeline-step done"><span />Completed Audit Report</div>
-            </div>
-
-            {/* Interactive Ask AI Widget */}
             <div className={`ask-card ${askExpanded ? 'expanded' : ''}`}>
               <div className="ask-header">
-                <span className="material-symbols-outlined">auto_awesome</span>
-                <h4>Ask Review Assistant</h4>
+                <span className="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+                <h4>Ask about this review</h4>
                 <button
                   type="button"
                   className="ask-expand-btn"
-                  title={askExpanded ? 'Collapse panel' : 'Expand to full height'}
-                  onClick={() => setAskExpanded(prev => !prev)}
+                  aria-label={askExpanded ? 'Collapse the assistant panel' : 'Expand the assistant panel'}
+                  onClick={() => setAskExpanded((v) => !v)}
                 >
-                  <span className="material-symbols-outlined">
+                  <span className="material-symbols-outlined" aria-hidden="true">
                     {askExpanded ? 'close_fullscreen' : 'open_in_full'}
                   </span>
                 </button>
               </div>
 
-               {/* Chat log */}
-              <div
-                ref={chatLogRef}
-                className="ask-chat-log"
-                style={{
-                  maxHeight: askExpanded ? 'none' : '220px',
-                  flex: askExpanded ? 1 : 'none',
-                  overflowY: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  fontSize: askExpanded ? '0.88rem' : '0.82rem',
-                  borderBottom: '1px solid var(--border-light)',
-                  paddingBottom: 10
-                }}
-              >
+              <div ref={chatLogRef} className="ask-chat-log" role="log" aria-live="polite">
                 {chatMessages.map((msg, index) => (
-                  <div key={index} style={{
-                    alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                    backgroundColor: msg.sender === 'user' ? 'var(--text-dark)' : 'var(--bg-white)',
-                    color: msg.sender === 'user' ? 'var(--bg-cream)' : 'var(--text-dark)',
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    maxWidth: '85%',
-                    border: msg.sender === 'ai' ? '1px solid var(--border-light)' : 'none',
-                    lineHeight: 1.4,
-                    fontStyle: msg.loading ? 'italic' : 'normal',
-                    opacity: msg.loading ? 0.7 : 1
-                  }}>
+                  <div key={index} className={`chat-bubble chat-${msg.sender}${msg.loading ? ' chat-loading' : ''}`}>
                     {formatMessageText(msg.text)}
                   </div>
                 ))}
               </div>
 
-              <form onSubmit={handleAskSubmit} className="ask-input">
+              <form onSubmit={handleAsk} className="ask-input">
+                <label htmlFor="ask-assistant" className="visually-hidden">
+                  Ask a question about this review
+                </label>
                 <textarea
-                  placeholder="Ask a question about this PR..."
+                  id="ask-assistant"
+                  placeholder="Why does this finding matter?"
                   rows="2"
                   value={askInput}
                   onChange={(e) => setAskInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      handleAskSubmit(e)
+                      handleAsk(e)
                     }
                   }}
                 />
-                <button type="submit" className="action-btn">
-                  <span className="material-symbols-outlined">send</span>
+                <button type="submit" className="action-btn" aria-label="Send question">
+                  <span className="material-symbols-outlined" aria-hidden="true">send</span>
                 </button>
               </form>
             </div>

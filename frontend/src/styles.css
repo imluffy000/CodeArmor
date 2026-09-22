@@ -2581,3 +2581,254 @@ button {
 
 
 
+
+/* ==========================================================================
+   Added with the merge gate, review history and accessibility pass.
+   ========================================================================== */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* One systemic focus ring, replacing the scattered `outline: none` resets. */
+:focus-visible {
+  outline: 2px solid var(--success-green, #34d399);
+  outline-offset: 2px;
+}
+
+/* The review progress screen animates continuously; give people a way out. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- merge gate ---------------------------------------------------------- */
+
+.merge-gate {
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+  background: var(--bg-card-clay, rgba(255, 255, 255, 0.04));
+  border-left-width: 4px;
+}
+.merge-gate.gate-blocked { border-left-color: var(--error-red, #ef4444); }
+.merge-gate.gate-caution { border-left-color: #fbbf24; }
+.merge-gate.gate-clear   { border-left-color: var(--success-green, #34d399); }
+
+.merge-gate-header h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-headings);
+  font-size: 1.25rem;
+}
+.merge-gate-header p { margin: 0 0 16px; }
+
+.merge-gate-list { margin-bottom: 16px; }
+.merge-gate-list h4 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.merge-gate-list ul { margin: 0; padding-left: 20px; }
+.merge-gate-list li { margin-bottom: 4px; line-height: 1.5; font-size: 0.92rem; }
+.merge-gate-blockers li { color: var(--error-red, #ef4444); }
+
+.merge-gate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+.merge-gate-item {
+  display: grid;
+  grid-template-columns: 20px auto;
+  grid-template-areas: "icon name" ". detail";
+  gap: 2px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+  font-size: 0.85rem;
+}
+.merge-gate-icon { grid-area: icon; font-weight: 700; }
+.merge-gate-name { grid-area: name; font-weight: 600; }
+.merge-gate-detail { grid-area: detail; color: var(--text-muted); line-height: 1.4; }
+.merge-gate-item.gate-fail .merge-gate-icon { color: var(--error-red, #ef4444); }
+.merge-gate-item.gate-warn .merge-gate-icon { color: #fbbf24; }
+.merge-gate-item.gate-pass .merge-gate-icon { color: var(--success-green, #34d399); }
+.merge-gate-item.gate-unknown .merge-gate-icon { color: var(--text-muted); }
+
+.merge-gate-caveat {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.12);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.topbar-bread .status-blocked { background: var(--error-red, #ef4444); color: #fff; }
+.topbar-bread .status-caution { background: #fbbf24; color: #09090c; }
+.topbar-bread .status-clear   { background: var(--success-green, #34d399); color: #09090c; }
+
+/* --- review history ------------------------------------------------------ */
+
+.review-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.review-history-button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.review-history-button:hover { background: rgba(255, 255, 255, 0.04); }
+.review-history-title { font-weight: 600; word-break: break-word; }
+.review-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  align-items: center;
+}
+
+/* --- pull request list --------------------------------------------------- */
+
+.pr-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pr-post-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.pr-post-toggle input { margin-top: 3px; }
+
+/* --- findings ------------------------------------------------------------ */
+
+.ai-card-title { font-family: var(--font-headings); margin: 0 0 10px; font-size: 1.1rem; }
+.ai-card-text { margin: 0 0 16px; font-size: 0.95rem; line-height: 1.55; }
+.snippet-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.snippet { margin: 0; overflow-x: auto; font-family: var(--font-mono); font-size: 0.82rem; }
+
+.stats-grid-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 640px) { .stats-grid-4 { grid-template-columns: repeat(2, 1fr); } }
+
+/* --- markdown ------------------------------------------------------------ */
+
+.md-text { white-space: pre-wrap; }
+.md-inline-code {
+  background: rgba(0, 0, 0, 0.18);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  word-break: break-word;
+}
+.md-code-block {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  border-left: 3px solid var(--text-dark);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.md-heading { display: inline-block; font-size: 0.95em; }
+.md-bullet { display: inline-flex; gap: 6px; }
+
+.chat-bubble {
+  padding: 6px 10px;
+  border-radius: 8px;
+  max-width: 85%;
+  line-height: 1.45;
+}
+.chat-user { align-self: flex-end; background: var(--text-dark); color: var(--bg-cream); }
+.chat-ai { align-self: flex-start; background: var(--bg-white); color: var(--text-dark); border: 1px solid var(--border-light); }
+.chat-loading { font-style: italic; opacity: 0.7; }
+
+.ask-chat-log {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  font-size: 0.84rem;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 10px;
+}
+.ask-card.expanded .ask-chat-log { max-height: none; flex: 1; font-size: 0.9rem; }
+
+/* --- timeline ------------------------------------------------------------ */
+
+.timeline-step.failed { color: var(--error-red, #ef4444); }
+.timeline-step.pending,
+.timeline-step.active { opacity: 0.65; }
+
+.card-footnote {
+  margin-top: 14px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* --- the dashboard on a phone -------------------------------------------- */
+
+.dashboard-shell { min-height: 100dvh; width: 100%; }
+
+@media (max-width: 960px) {
+  /* The 260px sidebar stayed at full width inside an overflow:hidden shell,
+     which squeezed the report to about 115px on a phone with no way to scroll
+     to it. */
+  .dashboard-shell { flex-direction: column; height: auto; overflow: visible; }
+  .side-nav {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    height: auto;
+  }
+  .side-footer { display: none; }
+  .dashboard-main { width: 100%; }
+  .workspace-area { padding: 16px; }
+}
