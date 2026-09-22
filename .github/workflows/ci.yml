@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ENVIRONMENT: development
+      SESSION_SECRET: ci-only-secret-value-long-enough-for-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install --upgrade pip && pip install -r requirements.txt
+      - name: Run tests
+        run: python -m pytest tests -q
+      - name: Lint for errors
+        run: python -m pylint app --errors-only --ignore=venv
+      - name: Security scan the backend
+        run: python -m bandit -r app -x app/venv,app/scripts -ll
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  secrets:
+    name: Secret and artifact scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject committed databases and env files
+        # A SQLite database holding encrypted OAuth tokens was committed to this
+        # repository once. This makes that class of commit fail review instead
+        # of reaching a public remote.
+        run: |
+          set -e
+          if git ls-files | grep -E '\.(db|db-wal|db-shm|sqlite3?)$'; then
+            echo "::error::A database file is tracked. Run: git rm --cached <file>"
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production)$'; then
+            echo "::error::An environment file is tracked."
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)node_modules/|(^|/)venv/'; then
+            echo "::error::Dependencies or a virtualenv are tracked."
+            exit 1
+          fi
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

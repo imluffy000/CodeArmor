@@ -1,0 +1,82 @@
+# Render Blueprint for the CodeArmor API.
+#
+# Everything about the deployment lives here rather than in the dashboard, so
+# it is reviewable, reproducible and revertible. Apply with:
+#   Render Dashboard -> New -> Blueprint -> point at this repo.
+
+envVarGroups:
+  # Shared so that any future worker derives the SAME generated secrets. A
+  # per-service `generateValue` produces a different value per service, and a
+  # worker with a different TOKEN_ENCRYPTION_KEY cannot decrypt the tokens the
+  # web service wrote.
+  - name: codearmor-shared
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SESSION_SECRET
+        generateValue: true
+      # Generate locally and paste once:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # Must be the stable production domain, not a per-deploy preview URL, and
+      # BACKEND_URL must match the OAuth App's callback exactly or GitHub
+      # returns redirect_uri_mismatch.
+      - key: FRONTEND_URL
+        value: https://REPLACE-ME.vercel.app
+      - key: BACKEND_URL
+        value: https://REPLACE-ME.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://REPLACE-ME.vercel.app
+      # A Vercel frontend calling a Render backend is cross-site, so the
+      # session cookie is only sent when it is SameSite=None AND Secure.
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+
+services:
+  - type: web
+    name: codearmor-api
+    runtime: python
+    # The free plan sleeps after 15 minutes and cold-starts in 30-90s, which a
+    # multi-minute streaming review does not survive gracefully.
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # Must bind 0.0.0.0:$PORT: Render port-scans the container and fails the
+    # deploy with "no open ports detected" for a 127.0.0.1 bind.
+    # proxy-headers makes request.url https behind Render's router.
+    startCommand: >-
+      uvicorn app.main:app
+      --host 0.0.0.0 --port $PORT
+      --workers 1
+      --timeout-keep-alive 75
+      --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - fromGroup: codearmor-shared
+      - key: DATABASE_URL
+        fromDatabase:
+          name: codearmor-db
+          property: connectionString
+
+databases:
+  # Not SQLite. A Render filesystem is wiped on every deploy, restart and
+  # instance replacement, which would take every user, connected repository,
+  # stored OAuth token and saved review with it.
+  - name: codearmor-db
+    plan: basic-256mb
+    databaseName: codearmor
+    user: codearmor
+    region: oregon
