@@ -183,6 +183,8 @@ def review_payload(review: Review, cached: bool = False) -> dict:
             "created_at": iso_utc(review.created_at),
             "cached": cached,
             "posted_to_github": review.posted_to_github,
+            "duration_ms": review.duration_ms,
+            "cost_usd": review.cost_usd,
         }
     )
     return payload

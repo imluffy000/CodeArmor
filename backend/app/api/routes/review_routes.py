@@ -156,6 +156,7 @@ def list_reviews(
         items.append(
             {
                 "review_id": review.id,
+                "repo_id": review.repository_id,
                 "repo_full_name": review.repo_full_name,
                 "pr_number": review.pr_number,
                 "pr_title": review.pr_title,

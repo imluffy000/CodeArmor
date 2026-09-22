@@ -73,6 +73,8 @@ class ReviewResponse(BaseModel):
     head_sha: str | None = None
     created_at: str | None = None
     cached: bool = False
+    duration_ms: int | None = None
+    cost_usd: float | None = None
 
     summary: str
     stats: ReviewStats
@@ -94,6 +96,7 @@ class ReviewSummaryItem(BaseModel):
     """One row in the review history list."""
 
     review_id: int
+    repo_id: int | None = None
     repo_full_name: str
     pr_number: int
     pr_title: str | None = None

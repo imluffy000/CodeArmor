@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronRight, ExternalLink, Lock, RefreshCw, Star, Unplug } from 'lucide-react'
 import { api } from '../api'
 import PullRequestList from './PullRequestList'
+import { Banner, Empty, Spinner, StatusIcon } from './primitives'
 
-const STATUS_META = {
-  pending: { label: 'Queued', cls: 'badge-pending' },
-  syncing: { label: 'Syncing…', cls: 'badge-syncing' },
-  synced: { label: 'Synced', cls: 'badge-synced' },
-  failed: { label: 'Sync failed', cls: 'badge-failed' },
+const SYNC = {
+  pending: { label: 'Queued', status: 'pending' },
+  syncing: { label: 'Syncing', status: 'active' },
+  synced: { label: 'Synced', status: 'pass' },
+  failed: { label: 'Sync failed', status: 'fail' },
 }
 
-const POLL_INTERVAL_MS = 2000
+const POLL_MS = 2000
 // A sync that never reaches a terminal state used to poll forever, keeping the
-// instance awake and showing "Syncing…" with no way out.
+// instance awake and showing "Syncing" with no way out.
 const MAX_POLLS = 60
 
 export default function RepoList({ refreshKey, onReviewStart }) {
@@ -20,7 +22,7 @@ export default function RepoList({ refreshKey, onReviewStart }) {
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const pollCount = useRef(0)
+  const polls = useRef(0)
 
   const load = useCallback(async () => {
     try {
@@ -29,8 +31,8 @@ export default function RepoList({ refreshKey, onReviewStart }) {
       setError(null)
       return data.repos
     } catch (err) {
-      // Swallowing this rendered "No repositories connected yet" to a signed-in
-      // user with ten of them — empty and broken are different states.
+      // Swallowing this rendered "no repositories connected" to a signed-in
+      // user with ten of them. Empty and broken are different states.
       setError(err.message)
       return null
     } finally {
@@ -39,30 +41,28 @@ export default function RepoList({ refreshKey, onReviewStart }) {
   }, [])
 
   useEffect(() => {
-    pollCount.current = 0
+    polls.current = 0
     load()
   }, [refreshKey, load])
 
-  // Depend on the boolean, not on `repos`. Depending on the array restarted the
-  // interval on every tick (each response is a new array identity), which made
-  // the ref guard dead code and the cadence drift.
-  const hasActiveSync = repos.some(
-    (r) => r.sync_status === 'pending' || r.sync_status === 'syncing'
-  )
+  // Depend on the boolean, not on `repos`: each response is a new array
+  // identity, so depending on the array restarted the interval every tick and
+  // made the ref guard dead code.
+  const syncing = repos.some((r) => r.sync_status === 'pending' || r.sync_status === 'syncing')
 
   useEffect(() => {
-    if (!hasActiveSync) return undefined
+    if (!syncing) return undefined
     const id = setInterval(() => {
-      pollCount.current += 1
-      if (pollCount.current > MAX_POLLS) {
+      polls.current += 1
+      if (polls.current > MAX_POLLS) {
         clearInterval(id)
-        setError('A repository sync is taking unusually long. Try re-syncing it.')
+        setError('A sync is taking unusually long. Try re-syncing the repository.')
         return
       }
       load()
-    }, POLL_INTERVAL_MS)
+    }, POLL_MS)
     return () => clearInterval(id)
-  }, [hasActiveSync, load])
+  }, [syncing, load])
 
   const disconnect = async (repo) => {
     if (!window.confirm(`Disconnect ${repo.full_name}? Its stored reviews are deleted too.`)) return
@@ -82,7 +82,7 @@ export default function RepoList({ refreshKey, onReviewStart }) {
     setBusyId(repo.id)
     try {
       await api(`/repos/${repo.id}/sync`, { method: 'POST' })
-      pollCount.current = 0
+      polls.current = 0
       await load()
     } catch (err) {
       setError(`Could not re-sync ${repo.full_name}: ${err.message}`)
@@ -91,89 +91,106 @@ export default function RepoList({ refreshKey, onReviewStart }) {
     }
   }
 
-  if (loading) return <p className="muted-text">Loading connected repositories…</p>
+  if (loading) return <Spinner label="Loading connected repositories" />
 
   return (
-    <>
+    <div className="stack">
       {error && (
-        <div className="error-banner" role="alert">
-          {error}{' '}
-          <button className="btn secondary btn-small" onClick={() => { setError(null); load() }}>
-            Retry
-          </button>
-        </div>
+        <Banner
+          tone="fail"
+          actions={
+            <button className="btn btn--sm" onClick={() => { setError(null); load() }}>
+              Retry
+            </button>
+          }
+        >
+          {error}
+        </Banner>
       )}
 
       {repos.length === 0 && !error ? (
-        <p className="muted-text">
-          No repositories connected yet. Connect one above to get started.
-        </p>
+        <Empty>No repositories connected yet. Add one above to start reviewing.</Empty>
       ) : (
-        <ul className="repo-list">
+        <div className="rows">
           {repos.map((repo) => {
-            const meta = STATUS_META[repo.sync_status] || STATUS_META.pending
+            const meta = SYNC[repo.sync_status] || SYNC.pending
             const expanded = expandedId === repo.id
             const panelId = `pulls-${repo.id}`
             return (
-              <li key={repo.id} className={`repo-card glass-card ${expanded ? 'repo-card-expanded' : ''}`}>
-                {/* A button, not a div: expanding is a required step to reach
-                    the PR list, so it has to be keyboard reachable. */}
+              <div key={repo.id} className="row">
+                {/* A button, not a div with onClick: expanding is a required
+                    step to reach the pull requests, so it has to be keyboard
+                    reachable. */}
                 <button
                   type="button"
-                  className="repo-card-main repo-card-clickable"
+                  className="row__main"
                   aria-expanded={expanded}
                   aria-controls={panelId}
                   onClick={() => setExpandedId(expanded ? null : repo.id)}
                 >
-                  <span className="repo-card-name">
-                    <span className="repo-card-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>{' '}
-                    {repo.full_name}
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={2.25}
+                    className="row__chevron"
+                    aria-hidden="true"
+                  />
+                  <span className="row__name">{repo.full_name}</span>
+                  <span className="row__meta">
+                    {repo.private && <Lock size={11} strokeWidth={2} aria-hidden="true" />}
+                    {repo.language && <span>{repo.language}</span>}
+                    <span className="cluster" style={{ gap: 3 }}>
+                      <Star size={11} strokeWidth={2} aria-hidden="true" />
+                      {repo.stars}
+                    </span>
+                    {repo.sync_status === 'synced' && (
+                      <span title="As of the last sync">{repo.open_prs} open</span>
+                    )}
+                    <span className="cluster" style={{ gap: 4 }}>
+                      <StatusIcon status={meta.status} size={12} />
+                      {meta.label}
+                    </span>
                   </span>
-                  <span className={`badge ${meta.cls}`}>{meta.label}</span>
                 </button>
 
-                <div className="repo-card-meta">
-                  {repo.language && <span>{repo.language}</span>}
-                  <span>⭐ {repo.stars}</span>
-                  {repo.sync_status === 'synced' && (
-                    <span title="As of the last sync">
-                      {repo.open_prs} open PR{repo.open_prs === 1 ? '' : 's'}
-                    </span>
-                  )}
-                  {repo.private && <span>🔒 private</span>}
-                </div>
-                {repo.description && <p className="repo-card-desc">{repo.description}</p>}
-
                 {expanded && (
-                  <div className="repo-card-pulls" id={panelId}>
-                    <PullRequestList repo={repo} onReviewStart={onReviewStart} />
-                  </div>
+                  <>
+                    <div className="row__body" id={panelId}>
+                      <PullRequestList repo={repo} onReviewStart={onReviewStart} />
+                    </div>
+                    <div className="row__actions">
+                      <a
+                        className="btn btn--sm"
+                        href={repo.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                        GitHub
+                      </a>
+                      <button
+                        className="btn btn--sm"
+                        disabled={busyId === repo.id}
+                        onClick={() => resync(repo)}
+                      >
+                        <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />
+                        {busyId === repo.id ? 'Working' : 'Re-sync'}
+                      </button>
+                      <button
+                        className="btn btn--sm btn--danger"
+                        disabled={busyId === repo.id}
+                        onClick={() => disconnect(repo)}
+                      >
+                        <Unplug size={12} strokeWidth={2} aria-hidden="true" />
+                        Disconnect
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                <div className="row">
-                  <a className="btn secondary btn-small" href={repo.html_url} target="_blank" rel="noreferrer">
-                    View on GitHub
-                  </a>
-                  <button
-                    className="btn secondary btn-small"
-                    disabled={busyId === repo.id}
-                    onClick={() => resync(repo)}
-                  >
-                    {busyId === repo.id ? 'Working…' : 'Re-sync'}
-                  </button>
-                  <button
-                    className="btn secondary btn-small"
-                    disabled={busyId === repo.id}
-                    onClick={() => disconnect(repo)}
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              </li>
+              </div>
             )
           })}
-        </ul>
+        </div>
       )}
-    </>
+    </div>
   )
 }

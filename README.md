@@ -19,6 +19,9 @@ CodeArmor never approves a pull request. It reports; a human decides.
 - [The six agents](#the-six-agents)
 - [The merge gate](#the-merge-gate)
 - [Architecture](#architecture)
+- [Observability](#observability)
+- [Evaluation](#evaluation)
+- [Interface](#interface)
 - [Security model](#security-model)
 - [What happens to your code](#what-happens-to-your-code)
 - [Running it locally](#running-it-locally)
@@ -254,6 +257,174 @@ implementation.
 
 ---
 
+## Observability
+
+A review is six model calls costing real money, and when one returns a wrong
+answer there is nothing to inspect afterwards unless it was recorded at the
+time. So every review is traced.
+
+### One trace, one span per agent
+
+`app/core/telemetry.py` holds a `Trace` per review and a `Span` per agent,
+carried in a `ContextVar`. That matters for a specific reason: the six agents
+run as parallel LangGraph branches, and `asyncio.create_task` copies the
+context, so all six record into the same object without the graph having to
+carry it as state — which would be a concurrent write conflict.
+
+Each span records:
+
+| | |
+|---|---|
+| `model`, `duration_ms` | which model answered, and how slowly |
+| `tokens_in`, `tokens_out`, `cost_usd` | from what OpenRouter reports, falling back to a price table |
+| `findings`, `dropped` | how many findings survived validation, and how many did not |
+| `parse_status` | `ok`, `unparseable` or `empty` |
+| `status`, `error` | `ok`, `error`, `timeout` or `skipped` |
+
+`dropped` is the one worth watching. It counts findings the model returned that
+failed schema validation, and a rising number is the earliest signal that a
+prompt or model change has gone wrong — it moves before recall does, and it was
+previously invisible.
+
+Cost falls back to an estimate rather than to zero when a provider omits it.
+Reporting `$0.00` would read as "this review was free", which is worse than an
+imprecise number.
+
+### Where it goes
+
+Persisted on the `Review` row, plus an `AgentRun` row per span — so *"which
+agent times out most"* and *"what does the security agent cost"* are queries
+rather than a scan of JSON blobs.
+
+```
+GET /ops/reviews/{id}/trace    per-agent latency, tokens, cost, parse status
+GET /ops/usage?days=30         cost per review, failure rate and drop rate per agent
+```
+
+Both are user-scoped. The console surfaces the first as a **Trace** tab.
+
+`prompt_version` is a hash over every prompt file, stored on each review. It is
+what makes a change in findings attributable to a prompt edit rather than to
+model drift, and it invalidates the cache when prompts change underneath it.
+
+### Cost ceiling
+
+`REVIEW_COST_CEILING_USD` (default `0.50`) aborts a review that overruns it and
+returns a partial result saying so. A 500-file pull request otherwise costs
+whatever it costs, discovered on the invoice.
+
+### Logs
+
+`LOG_FORMAT=json` emits one object per line, with `request_id`, `trace_id` and
+the audit fields as real keys, so a log search can filter instead of regexing a
+formatted string. Redaction applies in both modes, and every request carries an
+`X-Request-ID` echoed in the response.
+
+---
+
+## Evaluation
+
+Without an eval harness, every prompt edit is an unmeasured change to product
+behaviour: you cannot tell whether a rewrite found more real problems or just
+more problems. Two tiers, because they cost very different amounts.
+
+```bash
+python -m app.eval.run                  # offline: free, deterministic, CI-safe
+python -m app.eval.run --live           # also calls the real model
+python -m app.eval.run --update-baseline
+```
+
+### Offline
+
+85 checks across seven scorers, no model call and no credits, so CI runs it on
+every push:
+
+| Scorer | Guards against |
+|---|---|
+| `parser_robustness` | Losing a whole findings array to a bracket inside a snippet |
+| `finding_validation` | An unrecognised severity falling out of every histogram |
+| `deduplication` | One defect counted three times by three agents |
+| `integration_facts` | The deterministic extractors missing a destructive migration |
+| `merge_gate` | All ten gates, plus "a partial review is never `clear`" |
+| `diff_budget` | Silently reviewing 4% of a large diff |
+| `prompt_assembly` | A prompt that raises, or loses its injection defences |
+
+### Live
+
+`--live` runs the real agents over 12 frozen fixtures and scores recall, false
+positives, schema validity and injection resistance. Opt-in, because each run
+costs credits.
+
+The fixtures are deliberately small enough that a human can read a failure and
+tell immediately whether the model or the label is wrong: a real SQL injection,
+an N+1, a destructive migration, a renamed route with surviving callers,
+manifest/lockfile skew, a major version bump, an undocumented env var, a missing
+test, a **genuinely clean diff** (a review bot that finds eight problems in a
+clean rename is the failure users stop trusting first), and two prompt-injection
+payloads whose expected outcome is "flagged, not obeyed".
+
+### The gate
+
+Both tiers compare against `app/eval/baseline.json` and exit non-zero on a
+regression. Offline scores get no tolerance; live scores get 10%, because model
+output is not deterministic even at low temperature.
+
+### It found a hole in itself
+
+Worth recording, because it is the argument for having one. Every bracket case
+in the parser scorer was valid JSON on its own, so `json.loads` succeeded on the
+first try and the balanced-bracket scan — the actual fix for the array-losing bug
+— was never exercised. Reintroducing the old regex did not fail the eval. Two
+prose-wrapped cases were added, and the gate now fires.
+
+An eval you have not tried to defeat is a comfort blanket.
+
+---
+
+## Interface
+
+The console is built like an instrument, not a marketing page — the product
+reports a verdict on whether code is safe to merge, and it should read that way.
+
+**Three rules the token file enforces** (`frontend/src/styles/tokens.css`):
+
+1. **The chrome is monochrome.** Every saturated colour means something: pass,
+   check, fail, unknown. Nothing is coloured for decoration. Spraying colour
+   everywhere is precisely why most dashboards' status indicators do not read.
+2. **The base is warm neutral, not blue.** `#0f172a` (blue-tinted slate) is the
+   default of every generated dashboard; the hue is the tell.
+3. **No shadows on panels, 2px radius.** Soft shadows and 12px corners are what
+   make a UI look like a stack of floating cards. An instrument has seams.
+
+Colour is never the only channel — every status carries an icon and a text
+label too, so it survives a colourblind reader, a greyscale screenshot and a
+ticket attachment.
+
+| | |
+|---|---|
+| Display | Space Grotesk 600–700 |
+| UI | IBM Plex Sans |
+| Data | IBM Plex Mono, tabular figures, for every number, path and SHA |
+| Icons | Lucide (SVG, never emoji) |
+| Motion | `motion` at the subtle tier: 120–320ms, and it confirms a state change or it does not exist |
+
+Density follows the data-dense dashboard scale: 34px rows, 48px headers, a 4–32px
+spacing scale, 11–15px type.
+
+**Bundle.** The console is code-split, so the landing page ships neither the
+dashboard nor its motion features:
+
+```
+index          187 kB   58.7 kB gzip   landing + repositories
+ReviewConsole  111 kB   37.8 kB gzip   loaded on first review
+css             28 kB    5.5 kB gzip
+```
+
+Motion therefore costs first paint nothing. `LazyMotion` with the `m` component
+is used instead of the full `motion` import for the same reason.
+
+---
+
 ## Security model
 
 The threat model: CodeArmor holds GitHub tokens that can read and write users'
@@ -447,6 +618,8 @@ Everything is environment-driven; see [`backend/.env.example`](backend/.env.exam
 | `LLM_MODEL` | no | Any OpenRouter model id |
 | `LLM_TIMEOUT_SECONDS` | no | Default 120 |
 | `REVIEW_RATE_LIMIT_PER_HOUR` | no | Default 20 per user |
+| `REVIEW_COST_CEILING_USD` | no | Default 0.50. Aborts a runaway review |
+| `LOG_FORMAT` | no | `json` or `text`. Defaults to json in production |
 | `CHAT_RATE_LIMIT_PER_HOUR` | no | Default 60 per user |
 | `MAX_DIFF_CHARS` / `AGENT_DIFF_CHARS` | no | 60000 / 24000 |
 
@@ -561,6 +734,14 @@ requires `X-CSRF-Token` matching the `csrf_token` cookie.
 | `DELETE /reviews/{id}` | Delete it |
 | `POST /reviews/chat` | Ask about a stored review |
 
+### Observability
+
+| | |
+|---|---|
+| `GET /ops/reviews/{id}/trace` | Per-agent latency, tokens, cost and parse status |
+| `GET /ops/usage?days=30` | Cost per review, plus failure and drop rate per agent |
+| `GET /readyz` | Config validity and database reachability (not the health check) |
+
 ### SSE events
 
 | Event | Data |
@@ -578,7 +759,8 @@ requires `X-CSRF-Token` matching the `csrf_token` cookie.
 
 ```bash
 cd backend
-python -m pytest tests -q          # 128 tests
+python -m pytest tests -q          # 161 tests
+python -m app.eval.run             # 85 offline eval checks
 ```
 
 ```bash
@@ -594,10 +776,12 @@ The suite is organised around the properties that must not regress:
 | `test_integration_checks.py` | Every deterministic integration check and all ten merge gates, including that a partial or incomplete review is never `clear` |
 | `test_findings.py` | Severity and category validation, the JSON parser, deduplication, ordering, the directory/filename tree collision, scoring |
 | `test_pipeline.py` | Prompt assembly, per-item validation, the six-agent fan-out, failure degradation, injection handling, the GitHub message |
+| `test_observability.py` | Cost accounting, span and trace behaviour under parallel tasks, the cost ceiling, JSON logging, the ops endpoints, the eval harness itself, and that timestamps round-trip through the database |
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests,
-pylint, bandit, the frontend build, gitleaks, and a guard that fails the build if
-a database file, an env file or a virtualenv is ever committed.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests, the
+offline eval, pylint, bandit, the frontend build, gitleaks, and a guard that
+fails the build if a database file, an env file or a virtualenv is ever
+committed.
 
 ---
 
@@ -648,7 +832,7 @@ CodeArmor/
             ├── RepoConnect.jsx     Server-side repo search
             ├── RepoList.jsx        Connected repos, sync polling
             ├── PullRequestList.jsx PR list, state filter, post toggle
-            ├── ReviewDashboard.jsx Live progress + the report
+            ├── ReviewConsole.jsx   Live progress + the report (code-split)
             ├── MergeGate.jsx       The verdict panel
             ├── ReviewHistory.jsx   Stored reviews
             └── ErrorBoundary.jsx
@@ -716,10 +900,6 @@ Known gaps, roughly in order of value:
 - **A worker queue** — reviews and syncs run in-process, so they die on restart
   and cannot scale past one instance. Postgres `SELECT ... FOR UPDATE SKIP LOCKED`
   is the cheapest durable option
-- **An evaluation harness** — a golden set of frozen diffs with labelled expected
-  findings, scored for precision, recall, schema validity and injection
-  resistance. Without it, every prompt edit is an unmeasured change to product
-  behaviour. This is the single biggest quality gap
 - **Inline PR comments** — findings carry a `line`, so they could be posted
   against the diff instead of as one body. Needs snippet-to-hunk anchoring first
 - **Suggestion validation** — check that a finding's `file` is actually in the
@@ -727,9 +907,13 @@ Known gaps, roughly in order of value:
   `suggestion_snippet` parses
 - **Static analysis on a real checkout** — clone the PR head into a sandbox and
   wire up the existing registry
-- **Token and cost accounting** — capture per-agent usage and enforce a per-review
-  ceiling
 - **Frontend tests and linting** — Vitest plus eslint-plugin-react-hooks
+- **Grow the golden set** — 12 fixtures is a start, not a suite. Aim for 20+ per
+  agent, and record a live baseline so `--live` gates rather than just reports
+- **A real trace exporter** — the span interface mirrors OpenTelemetry closely
+  enough that swapping in an exporter is a change to `telemetry.py` alone
+- **Vite 6+** — the remaining `npm audit` advisory is an esbuild dev-server issue
+  that needs a major bump
 
 ## License
 

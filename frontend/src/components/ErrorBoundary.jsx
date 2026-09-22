@@ -1,7 +1,9 @@
 import React from 'react'
+import { AlertTriangle } from 'lucide-react'
 
-// Without this, a render error in the dashboard unmounts the whole app to a
-// blank page, and a finished review that cost real money goes with it.
+// Without this, a render error in the console unmounts the whole app to a
+// blank page. Reviews are stored server-side, so a reload recovers them - the
+// point of this screen is to say so rather than leave a white void.
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props)
@@ -20,26 +22,29 @@ export default class ErrorBoundary extends React.Component {
     if (!this.state.error) return this.props.children
 
     return (
-      <div className="app-root" role="alert" style={{ padding: '48px 24px', maxWidth: 640, margin: '0 auto' }}>
-        <h1 style={{ fontSize: '1.5rem', marginBottom: 12 }}>Something broke on this page</h1>
-        <p className="muted-text" style={{ marginBottom: 20 }}>
-          Your reviews are saved on the server, so nothing is lost. Reload to get back to them.
-        </p>
-        <pre
-          style={{
-            background: 'rgba(0,0,0,0.2)',
-            padding: 12,
-            borderRadius: 8,
-            fontSize: '0.8rem',
-            overflowX: 'auto',
-            marginBottom: 20,
-          }}
-        >
-          {String(this.state.error?.message || this.state.error)}
-        </pre>
-        <button className="btn primary" onClick={() => window.location.reload()}>
-          Reload
-        </button>
+      <div className="page" role="alert" style={{ maxWidth: 620 }}>
+        <div className="panel">
+          <div className="panel__head">
+            <div className="cluster">
+              <AlertTriangle size={15} strokeWidth={2} style={{ color: 'var(--signal-fail)' }} aria-hidden="true" />
+              <h2 style={{ fontSize: 'var(--text-base)' }}>This page stopped rendering</h2>
+            </div>
+          </div>
+          <div className="panel__body stack">
+            <p className="muted">
+              Your reviews are stored on the server, so nothing is lost. Reloading returns you
+              to them.
+            </p>
+            <div className="code-well">
+              <pre>{String(this.state.error?.message || this.state.error)}</pre>
+            </div>
+            <div className="cluster">
+              <button className="btn btn--primary" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }

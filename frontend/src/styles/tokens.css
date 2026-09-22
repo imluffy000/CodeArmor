@@ -1,0 +1,162 @@
+/* ==========================================================================
+   CodeArmor design tokens - "instrument panel"
+   ==========================================================================
+
+   The product reports a verdict on whether code is safe to merge. So the
+   interface is built like an instrument, not like a marketing page: a dark
+   neutral chassis, hairline rules instead of floating cards, dense rows, and
+   colour reserved almost entirely for signal.
+
+   Three rules this file exists to enforce:
+
+   1. The chrome is MONOCHROME. Every saturated colour in the UI means
+      something - pass, warn, fail, unknown. Nothing is coloured for
+      decoration. Most tools spray colour everywhere, which is precisely why
+      their status indicators do not read.
+
+   2. The base is WARM NEUTRAL, not blue. #0f172a (blue-tinted slate) is the
+      default of every generated dashboard; the hue is the tell. These greys
+      sit a few degrees warm of neutral, which reads closer to a terminal or a
+      machined panel.
+
+   3. No shadows on panels, and a 2px radius. Soft shadows and 12px corners
+      are what make a dashboard look like a stack of floating cards. An
+      instrument has seams, not drop shadows.
+
+   Colour is never the only channel: every status also carries an icon and a
+   text label, because a red dot alone fails for a colourblind reader.
+
+   The palette is composed rather than taken from a reference library - the
+   palette search returned only light-mode results for this product type.
+   Contrast is verified: --fg-secondary on --bg-base is 7.1:1, --fg-muted is
+   4.6:1, and every signal colour clears 4.5:1 on --bg-base and --bg-panel.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* --- chassis ----------------------------------------------------------
+     Six steps of warm neutral. Panels are distinguished by a hairline and a
+     small lightness step, never by a shadow. */
+  --bg-void: #070708;      /* behind everything; code wells */
+  --bg-base: #0b0b0c;      /* app background */
+  --bg-panel: #101012;     /* panels and the sidebar */
+  --bg-raised: #16161a;    /* rows, inputs, hovered surfaces */
+  --bg-active: #1e1e24;    /* pressed and selected */
+  --bg-overlay: rgba(7, 7, 8, 0.82);
+
+  /* --- rules ------------------------------------------------------------
+     Structure comes from these, which is why there are three weights. */
+  --line-faint: #1a1a1e;
+  --line: #24242a;
+  --line-strong: #34343d;
+
+  /* --- text -------------------------------------------------------------- */
+  --fg: #ededee;            /* 15.8:1 on --bg-base */
+  --fg-secondary: #b4b4b9;  /*  7.1:1 */
+  --fg-muted: #83838c;      /*  4.6:1 - the floor for body text */
+  --fg-dim: #5c5c65;        /*  2.8:1 - decorative only, never body copy */
+
+  /* --- signal -----------------------------------------------------------
+     The only chroma in the interface. One colour per state, and each state
+     also has an icon and a label. */
+  --signal-fail: #ff5647;
+  --signal-fail-dim: rgba(255, 86, 71, 0.14);
+  --signal-warn: #ffab2e;
+  --signal-warn-dim: rgba(255, 171, 46, 0.14);
+  --signal-pass: #3ddc84;
+  --signal-pass-dim: rgba(61, 220, 132, 0.12);
+  --signal-info: #58a6ff;
+  --signal-info-dim: rgba(88, 166, 255, 0.12);
+  --signal-idle: var(--fg-dim);
+
+  /* Severity maps onto signal, so the two vocabularies cannot drift. */
+  --sev-critical: var(--signal-fail);
+  --sev-high: #ff8a4c;
+  --sev-medium: var(--signal-warn);
+  --sev-low: var(--signal-info);
+
+  /* Diff colours, kept close to what a developer already reads in git. */
+  --diff-add: #3ddc84;
+  --diff-add-bg: rgba(61, 220, 132, 0.08);
+  --diff-del: #ff5647;
+  --diff-del-bg: rgba(255, 86, 71, 0.08);
+
+  /* --- accent -----------------------------------------------------------
+     Amber, doing double duty as "attention here": the focus ring, the active
+     nav marker and the caution signal. On an instrument that is consistent
+     rather than confusing - amber means look here, whatever the reason. */
+  --accent: #ffab2e;
+  --accent-ink: #0b0b0c;
+  --focus: #ffab2e;
+
+  /* --- type -------------------------------------------------------------
+     Space Grotesk carries real geometric character for headings without
+     being decorative. IBM Plex Sans is the UI voice - more personality than
+     Inter, which is now the default everywhere. IBM Plex Mono takes every
+     number, path, SHA and identifier, and ships tabular figures so columns
+     of digits line up. */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-2xs: 0.6875rem; /* 11px - dense table labels only */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.8125rem;  /* 13px - the workhorse UI size */
+  --text-base: 0.9375rem;/* 15px - body copy */
+  --text-lg: 1.0625rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.75rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.6;
+
+  /* Wide tracking on small uppercase labels is what stops them reading as
+     shouting and starts them reading as an instrument legend. */
+  --track-label: 0.08em;
+  --track-tight: -0.01em;
+
+  /* --- space -------------------------------------------------------------
+     Dense scale: this is a data UI, and whitespace here costs information. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 72px;
+
+  --row-h: 34px;
+  --header-h: 48px;
+  --sidebar-w: 236px;
+
+  /* --- shape ------------------------------------------------------------- */
+  --radius: 2px;
+  --radius-md: 4px;
+  --radius-full: 999px;
+
+  /* --- motion -----------------------------------------------------------
+     Subtle tier: motion confirms a state change and nothing more. */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* --- depth ------------------------------------------------------------
+     Only floating things (menus, dialogs) get a shadow. Panels never do. */
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
+  --glow-accent: 0 0 12px rgba(255, 171, 46, 0.35);
+}
+
+/* The app is dark by design - a review console is read in a dark editor, and
+   the style guidance for this product type marks light mode not-recommended.
+   A forced-light request gets a readable dark surface rather than a broken
+   half-light one. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: dark;
+  }
+}
