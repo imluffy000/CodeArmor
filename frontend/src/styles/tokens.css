@@ -130,7 +130,12 @@
   --sp-8: 72px;
 
   --row-h: 34px;
+  /* Two different headers. --header-h is the dense in-app one, used by the
+     console header and every panel head, and it stays tight. --topbar-h is
+     the product navigation bar, which carries the brand and the primary
+     action and is sized to be reachable rather than compact. */
   --header-h: 48px;
+  --topbar-h: 64px;
   --sidebar-w: 236px;
 
   /* --- shape ------------------------------------------------------------- */

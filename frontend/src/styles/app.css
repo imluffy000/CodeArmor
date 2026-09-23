@@ -12,9 +12,9 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
-  height: var(--header-h);
-  padding: 0 var(--sp-4);
+  gap: var(--sp-5);
+  height: var(--topbar-h);
+  padding: 0 var(--sp-5);
   border-bottom: 1px solid var(--line);
   background: var(--bg-panel);
   position: sticky;
@@ -25,9 +25,9 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   font-family: var(--font-display);
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   font-weight: 700;
   letter-spacing: var(--track-tight);
   color: var(--fg);
@@ -37,21 +37,21 @@
    box around a shape that already has an edge. */
 .brand__mark {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 27px;
+  height: 27px;
   flex-shrink: 0;
 }
 
 .topbar__nav {
   display: flex;
   gap: var(--sp-1);
-  margin-left: var(--sp-4);
+  margin-left: var(--sp-3);
 }
 .topbar__nav a {
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: var(--radius);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--fg-muted);
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
@@ -108,12 +108,12 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  height: 28px;
-  padding: 0 var(--sp-2);
+  height: 36px;
+  padding: 0 var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--bg-raised);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   color: var(--fg-secondary);
 }
 .account__trigger:hover {
@@ -121,9 +121,18 @@
   color: var(--fg);
 }
 .account__avatar {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--radius);
+}
+
+/* The primary action lives in this bar, so it is sized for the bar rather
+   than inheriting the compact in-app button height. Scoped to .topbar so
+   every other button in the app is untouched. */
+.topbar .btn {
+  height: 38px;
+  padding: 0 var(--sp-4);
+  font-size: var(--text-base);
 }
 .account__menu {
   position: absolute;
@@ -935,6 +944,28 @@
   }
 }
 
+/* The bar is the first thing to run out of room, and it does so before any
+   layout does: brand plus four links plus the primary action is a lot of
+   horizontal. It steps down twice before the links are dropped entirely. */
+@media (max-width: 900px) {
+  .topbar {
+    gap: var(--sp-3);
+  }
+  .topbar__nav {
+    margin-left: 0;
+  }
+  .topbar__nav a {
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--text-sm);
+  }
+}
+
+@media (max-width: 700px) {
+  .topbar__nav {
+    display: none;
+  }
+}
+
 @media (max-width: 860px) {
   .console {
     grid-template-columns: minmax(0, 1fr);
@@ -980,9 +1011,23 @@
     gap: var(--sp-5);
   }
   .topbar {
+    height: 56px;
     padding: 0 var(--sp-3);
   }
-  .topbar__nav {
+  .brand {
+    font-size: var(--text-base);
+    gap: var(--sp-2);
+  }
+  .brand__mark {
+    width: 24px;
+    height: 24px;
+  }
+  .topbar .btn {
+    height: 34px;
+    padding: 0 var(--sp-3);
+    font-size: var(--text-sm);
+  }
+  .topbar__cta-tail {
     display: none;
   }
   .console__body {
@@ -1175,7 +1220,7 @@
   display: flex;
   flex-direction: column;
   /* The topbar is sticky, so an anchor jump has to clear it. */
-  scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+  scroll-margin-top: calc(var(--topbar-h) + var(--sp-4));
 }
 
 /* Pushed to the bottom edge so the legends line up across the row even when

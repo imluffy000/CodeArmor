@@ -15,14 +15,12 @@ import {
   GitMerge,
   GitPullRequest,
   Layers,
-  ListChecks,
   Lock,
   MessageSquare,
   Scale,
   ScrollText,
   ShieldAlert,
   ShieldCheck,
-  Split,
   Trash2,
   Workflow,
   XCircle,
@@ -42,10 +40,9 @@ const REPO = 'https://github.com/imluffy000/CodeArmor'
 
    The page is also deliberately NOT a run of equal card grids. Each section
    gets the composition its content actually wants: a split for the hero and
-   the console, a dense multi-column panel for the capability system, a
-   branching diagram for the pipeline, an editorial lead for the use cases, a
-   node chain for the architecture, a vertical trail for the data path, and an
-   action list for contact.
+   the console, a dense multi-column panel for the capability system, an
+   editorial lead for the use cases, a node chain for the architecture, a
+   vertical trail for the data path, and an action list for contact.
    ========================================================================== */
 
 /* --------------------------------------------------------------- mock data */
@@ -92,8 +89,6 @@ const AFFECTED = [
   { path: 'tests/test_keys.py', count: 1 },
 ]
 
-const AGENTS = ['security', 'quality', 'performance', 'testing', 'architecture', 'integration']
-
 const STATUS_ICON = { pass: CheckCircle2, warn: AlertTriangle, fail: XCircle }
 
 /* ------------------------------------------------------------------ content */
@@ -122,29 +117,6 @@ const CAPABILITIES = [
     title: 'Merge gate',
     body: 'Ten deterministic gates, each reporting pass, check or fail with a reason.',
     signals: ['CI', 'contracts', 'conflicts', 'coverage'],
-  },
-]
-
-const PIPELINE = [
-  {
-    step: '01',
-    title: 'Scope and budget',
-    body: 'Reads the diff, the changed files, mergeability, check runs and drift against the base branch. A diff larger than the budget is truncated deliberately, and the share actually reviewed is reported rather than hidden.',
-  },
-  {
-    step: '02',
-    title: 'Six specialists, in parallel',
-    body: 'Security, code quality, performance, testing, architecture and integration each read the diff as a separate branch of the graph. An agent that fails degrades the report and names itself; it does not fail the review.',
-  },
-  {
-    step: '03',
-    title: 'Reconcile and score',
-    body: 'Findings are deduplicated across agents, agreement between them is counted, severity is normalised to one vocabulary, and the score is capped by how much of the diff was read.',
-  },
-  {
-    step: '04',
-    title: 'Decide the verdict',
-    body: 'Ten deterministic gates - conflicts, CI, base drift, schema, contracts, dependencies, config, findings, coverage and pipeline health - each returning pass, check or fail with the reason attached.',
   },
 ]
 
@@ -317,7 +289,6 @@ function AnalysisMock() {
           <span>
             {PR.head} → {PR.base}
           </span>
-          <span>{PR.sha}</span>
         </p>
       </div>
 
@@ -373,7 +344,10 @@ function ConsoleMock() {
           <span className="mock__slash">/</span>
           <strong>#{PR.number}</strong>
         </span>
-        <span className="tag tag--fail">blocked</span>
+        <span className="mock__bar-end">
+          <span className="mono mock__loc">{PR.sha}</span>
+          <span className="tag tag--fail">blocked</span>
+        </span>
       </div>
 
       <div className="mock__readouts">
@@ -579,83 +553,10 @@ export default function Landing({ onLogin }) {
         </div>
       </section>
 
-      {/* --------------------------------------------- 03 how a review runs */}
-      <section id="pipeline" className="sect">
-        <SectionHead
-          index="03"
-          label="pipeline"
-          title="How a review runs"
-          lede="The pipeline is split deliberately between what a language model is good at and what it is not. Agents read code and judge it; the merge verdict is computed from facts pulled out of GitHub, so it does not drift between runs."
-          align="center"
-        />
-
-        <div className="flow" role="img" aria-label="A pull request enters, is scoped, is read by six specialist agents in parallel, then reconciled and scored into a single verdict">
-          <div className="flow__node flow__node--input">
-            <GitPullRequest size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Pull request</span>
-          </div>
-
-          <span className="flow__stem" aria-hidden="true" />
-
-          <div className="flow__node">
-            <span className="flow__step mono">01</span>
-            <span>Scope and budget</span>
-            <span className="flow__sub">diff, files, mergeability, checks, drift</span>
-          </div>
-
-          <span className="flow__stem" aria-hidden="true" />
-
-          {/* The one genuinely parallel stage, drawn as parallel. The buses are
-              inset to the centre of the first and last column so the line does
-              not overhang the outer agents. */}
-          <div className="fan">
-            <span className="fan__label legend">
-              <Split size={12} strokeWidth={2} aria-hidden="true" />
-              step 02 · six specialists, in parallel
-            </span>
-            <div className="fan__agents">
-              {AGENTS.map((agent) => (
-                <div key={agent} className="fan__col">
-                  <span className="fan__stem" aria-hidden="true" />
-                  <div className="fan__node mono">{agent}</div>
-                  <span className="fan__stem" aria-hidden="true" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <span className="flow__stem" aria-hidden="true" />
-
-          <div className="flow__node">
-            <span className="flow__step mono">03</span>
-            <span>Reconcile and score</span>
-            <span className="flow__sub">dedupe, agreement, severity, coverage cap</span>
-          </div>
-
-          <span className="flow__stem" aria-hidden="true" />
-
-          <div className="flow__node flow__node--verdict">
-            <GitMerge size={14} strokeWidth={2} aria-hidden="true" />
-            <span>Verdict</span>
-            <span className="flow__sub">blocked · caution · clear</span>
-          </div>
-        </div>
-
-        <ol className="strip strip--steps">
-          {PIPELINE.map(({ step, title, body }) => (
-            <li key={step}>
-              <span className="strip__index mono">{step}</span>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* -------------------------------------------------- 04 where it fits */}
+      {/* -------------------------------------------------- 03 where it fits */}
       <section id="uses" className="sect">
         <SectionHead
-          index="04"
+          index="03"
           label="uses"
           title="Where it fits"
           lede="CodeArmor is built for the minutes before a merge, on repositories you have explicitly connected. It is a second reader with a long attention span, not a replacement for the first one."
@@ -721,10 +622,10 @@ export default function Landing({ onLogin }) {
         </div>
       </section>
 
-      {/* ------------------------------------------ 05 inside the application */}
+      {/* ------------------------------------------ 04 inside the application */}
       <section id="platform" className="sect">
         <SectionHead
-          index="05"
+          index="04"
           label="architecture"
           title="Inside the application"
           lede="The parts that decide whether an AI review can be trusted are the ones nobody sees: what each agent cost, which findings were discarded before you saw them, and whether a prompt change made the output better or merely different."
@@ -757,10 +658,10 @@ export default function Landing({ onLogin }) {
         </div>
       </section>
 
-      {/* ----------------------------------------------- 06 security and data */}
+      {/* ----------------------------------------------- 05 security and data */}
       <section id="policies" className="sect">
         <SectionHead
-          index="06"
+          index="05"
           label="security and data"
           title="Where your code goes"
           lede="Stated plainly, because a review tool asks for access to private source code. This is the path a pull request actually takes through the system, and the README documents the same behaviour endpoint by endpoint."
@@ -782,10 +683,10 @@ export default function Landing({ onLogin }) {
         </ol>
       </section>
 
-      {/* -------------------------------------------------------- 07 contact */}
+      {/* -------------------------------------------------------- 06 contact */}
       <section id="contact" className="sect">
         <SectionHead
-          index="07"
+          index="06"
           label="contact"
           title="Three channels, all public"
           lede="Account and data requests need no conversation: revocation and erasure live in the account menu and take effect immediately."

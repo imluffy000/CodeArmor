@@ -10,7 +10,6 @@ const SIGNED_IN_NAV = [
 
 const LANDING_NAV = [
   ['product', 'Product'],
-  ['pipeline', 'Pipeline'],
   ['uses', 'Uses'],
   ['policies', 'Policies'],
   ['contact', 'Contact'],
@@ -72,6 +71,9 @@ export default function Header() {
     const nodes = ids.map((id) => document.getElementById(id)).filter(Boolean)
     if (nodes.length === 0) return undefined
 
+    const bar = document.querySelector('.topbar')
+    const barOffset = Math.round(bar ? bar.getBoundingClientRect().height : 64) + 8
+
     const observer = new IntersectionObserver(
       (entries) => {
         // The callback only reports sections whose visibility CHANGED, so the
@@ -85,9 +87,9 @@ export default function Header() {
         const current = ids.find((id) => onscreen.current.has(id))
         if (current) setActive(current)
       },
-      // Clears the sticky bar at the top, and stops a section counting as
-      // current the instant its first pixel appears at the bottom.
-      { rootMargin: '-56px 0px -55% 0px' }
+      // Measured rather than hardcoded: this has to clear the sticky bar, and
+      // a constant here silently goes wrong the next time the bar is resized.
+      { rootMargin: `-${barOffset}px 0px -55% 0px` }
     )
 
     nodes.forEach((node) => observer.observe(node))
@@ -194,7 +196,15 @@ export default function Header() {
       ) : (
         <button type="button" className="btn btn--primary" onClick={login}>
           <GithubMark size={14} />
-          Sign in with GitHub
+          {/* The tail is dropped on a phone, where the full label pushed the
+              button off the right edge. The accessible name stays meaningful
+              either way. */}
+          {/* One span, not a bare text node plus a span: a text node inside a
+              flex container becomes its own flex item, so the two picked up
+              the button gap between them and rendered a double space. */}
+          <span>
+            Sign in<span className="topbar__cta-tail"> with GitHub</span>
+          </span>
         </button>
       )}
     </header>

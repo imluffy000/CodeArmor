@@ -21,7 +21,6 @@ const AUTH_ERRORS = {
 const FOOTER_LINKS = [
   ['#product', 'The product'],
   ['#capabilities', 'What it checks'],
-  ['#pipeline', 'How it runs'],
   ['#uses', 'Where it fits'],
   ['#platform', 'Architecture'],
   ['#policies', 'Security and data'],
