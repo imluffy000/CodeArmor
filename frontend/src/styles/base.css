@@ -13,6 +13,10 @@
 }
 
 html {
+  /* Every in-page anchor eases instead of jumping. The nav already did
+     this through scrollIntoView; the hero and footer links did not.
+     The prefers-reduced-motion block below overrides it to auto. */
+  scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
   /* Never disable zoom; a viewer may need it. */
   text-size-adjust: 100%;

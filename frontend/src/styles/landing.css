@@ -1,0 +1,1131 @@
+/* ==========================================================================
+   Landing page
+   ==========================================================================
+
+   Loaded after app.css, so the few rules here that sharpen an existing class
+   (.hero) intentionally win.
+
+   Two rules govern this file:
+
+   1. It introduces no colour and no typeface. Every value below is a token
+      from tokens.css. Hierarchy is built from scale, weight and space -
+      --text-2xl for section headings where the app uses --text-base - and
+      never from a new hue.
+
+   2. No section repeats the composition of the one before it. The page is a
+      sequence of different structures: a split hero, a two-pane console, a
+      dense capability matrix, a branching diagram, an editorial lead, a node
+      chain, a vertical trail, an action list. A page of identical card grids
+      is what makes a product look like a list of features instead of a
+      system, and that is the specific thing this file exists to avoid.
+   ========================================================================== */
+
+/* The landing page needs a far more generous vertical rhythm than the signed
+   in surfaces, which are deliberately dense. It gets its own wrapper so it
+   can set that without touching .page. */
+.lp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* --- section headings ---------------------------------------------------- */
+.shead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+.shead--center {
+  align-items: center;
+  text-align: center;
+}
+.shead__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.shead__index {
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  color: var(--accent);
+}
+.shead h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+.shead p {
+  max-width: 74ch;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+.shead--center p {
+  margin-inline: auto;
+}
+
+/* --- hero ----------------------------------------------------------------
+   Weighted towards the demo rather than split evenly: the question the hero
+   has to answer is "what happens when I use it", and the mock answers it
+   faster than the paragraph does. */
+.hero {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--sp-7);
+  padding: var(--sp-5) 0 var(--sp-4);
+}
+.hero__copy {
+  display: flex;
+  flex-direction: column;
+}
+.hero__facts {
+  display: flex;
+  gap: var(--sp-6);
+  margin: var(--sp-6) 0 0;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-faint);
+}
+.hero__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hero__facts dt {
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+.hero__facts dd {
+  margin: 0;
+}
+
+/* --- product mocks -------------------------------------------------------
+   The same frame for every product surface on the page, so the hero report,
+   the console and the finding detail read as three views of one application
+   rather than three drawings. */
+.mock {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.mock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-void);
+}
+.mock__crumbs {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.mock__crumbs strong {
+  color: var(--fg);
+}
+.mock__slash {
+  margin: 0 4px;
+  color: var(--fg-dim);
+}
+.mock__pr {
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-faint);
+}
+.mock__title {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.mock__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--sp-3);
+  margin-top: 5px;
+  font-size: var(--text-2xs);
+  color: var(--fg-dim);
+}
+.mock__add {
+  color: var(--diff-add);
+}
+.mock__del {
+  color: var(--diff-del);
+}
+.mock__group {
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-faint);
+}
+.mock__group:last-of-type {
+  border-bottom: 0;
+}
+.mock__rows {
+  margin-top: var(--sp-2);
+}
+
+/* Status is icon plus text, never colour alone - the same contract the
+   console keeps, so a greyscale screenshot of this page still reads. */
+.sig {
+  flex-shrink: 0;
+}
+.sig--pass {
+  color: var(--signal-pass);
+}
+.sig--warn {
+  color: var(--signal-warn);
+}
+.sig--fail {
+  color: var(--signal-fail);
+}
+
+.mrow {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-faint);
+  font-size: var(--text-xs);
+}
+.mrow:last-child {
+  border-bottom: 0;
+}
+.mrow__name {
+  color: var(--fg-secondary);
+}
+.mrow__value {
+  text-align: right;
+  color: var(--fg-muted);
+}
+.mrow__pad {
+  min-width: 58px;
+  text-align: right;
+  font-size: var(--text-2xs);
+  color: var(--fg-dim);
+}
+.mrow--file {
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+}
+.mrow--file svg {
+  color: var(--fg-dim);
+}
+.mrow--file .mrow__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mrow__count {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+}
+
+/* Ten gates do not fit in a readable single column at this width, and they
+   are a matrix rather than a list, so they are drawn as one. */
+.mock__gates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line-faint);
+  background: var(--line-faint);
+}
+.gcell {
+  display: grid;
+  grid-template-columns: 12px auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  padding: 5px var(--sp-2);
+  background: var(--bg-panel);
+  font-size: var(--text-2xs);
+}
+.gcell__name {
+  color: var(--fg-secondary);
+}
+.gcell__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-dim);
+}
+
+.mock__verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--line);
+  background: var(--signal-fail-dim);
+}
+.mock__verdict strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.mock__verdict span {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+
+.mock__readouts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--line);
+  background: var(--line-faint);
+}
+.mreadout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--bg-panel);
+}
+.mreadout__value {
+  font-size: var(--text-lg);
+  color: var(--fg);
+}
+.mreadout__hint {
+  font-size: var(--text-2xs);
+  color: var(--fg-dim);
+}
+
+/* The finding is the console's own component, dropped straight in. Its outer
+   borders come off so it fills the frame, but the left severity rule stays -
+   that bar is the product telling you how bad this one is. */
+.mock--finding .finding {
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+}
+.mock__loc {
+  font-size: var(--text-2xs);
+  color: var(--fg-dim);
+}
+.mock__path {
+  /* .legend uppercases, which is right for a label and wrong for a path -
+     APP/SERVICES/KEY_SERVICE.PY is not a file anyone has. */
+  margin-top: calc(var(--sp-2) * -1);
+  text-transform: none;
+}
+.finding__text code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--fg);
+}
+
+/* --- 01 product showcase ------------------------------------------------- */
+.showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+.showcase__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.showcase__note {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+
+/* --- 02 capability matrix -----------------------------------------------
+   Rows, not columns. Four columns force every description to the length of
+   the shortest one; four rows let the name, the explanation and the signals
+   each have the width they need, and the result reads as a specification. */
+.capsys {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+.capsys__row {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
+  gap: var(--sp-4);
+  align-items: start;
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--line-faint);
+  transition: background var(--dur-fast) var(--ease);
+}
+.capsys__row:last-child {
+  border-bottom: 0;
+}
+.capsys__row:hover {
+  background: var(--bg-raised);
+}
+.capsys__id {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--fg-dim);
+}
+.capsys__id h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--fg);
+}
+.capsys__body {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+.capsys__signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  list-style: none;
+}
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  color: var(--fg-secondary);
+}
+.signal::before {
+  content: '\2192';
+  color: var(--fg-dim);
+}
+
+/* --- 03 pipeline --------------------------------------------------------- */
+.flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--sp-6) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+.flow__node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 270px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.flow__node svg {
+  color: var(--fg-dim);
+}
+.flow__node--input {
+  border-color: var(--line-strong);
+}
+.flow__node--verdict {
+  border-color: var(--accent);
+  background: var(--bg-active);
+}
+.flow__node--verdict svg {
+  color: var(--accent);
+}
+.flow__step {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--track-label);
+  color: var(--fg-dim);
+}
+.flow__sub {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+}
+.flow__stem {
+  width: 1px;
+  height: var(--sp-5);
+  background: var(--line-strong);
+}
+
+.fan {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+.fan__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fan__agents {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  width: 100%;
+  padding: var(--sp-4) 0;
+}
+/* The two buses. Inset to the centre of the first and last column - 1/12 and
+   11/12 of the width, for six equal columns - so the line stops exactly at
+   the outer stems instead of overhanging them. */
+.fan__agents::before,
+.fan__agents::after {
+  content: '';
+  position: absolute;
+  left: calc(100% / 12);
+  right: calc(100% / 12);
+  height: 1px;
+  background: var(--line-strong);
+}
+.fan__agents::before {
+  top: 0;
+}
+.fan__agents::after {
+  bottom: 0;
+}
+.fan__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.fan__stem {
+  width: 1px;
+  height: var(--sp-4);
+  background: var(--line-strong);
+}
+.fan__node {
+  width: calc(100% - var(--sp-2));
+  padding: var(--sp-2) 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  text-align: center;
+  font-size: var(--text-2xs);
+  color: var(--fg-secondary);
+}
+
+/* --- legends under a diagram --------------------------------------------
+   Columns of text separated by a single rule, with no panel and no border.
+   The diagram above is the figure; this is its caption, and giving it card
+   chrome would put the two in competition. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+.strip--steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.strip > * {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+.strip svg {
+  color: var(--fg-dim);
+}
+.strip__index {
+  letter-spacing: var(--track-label);
+  font-size: var(--text-2xs);
+  color: var(--accent);
+}
+.strip h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.strip p {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+
+/* --- 04 editorial feature ------------------------------------------------ */
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: var(--sp-6);
+  align-items: center;
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+.feature__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+.feature__copy h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+.feature__copy h3 svg {
+  color: var(--accent);
+}
+.feature__copy p {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+.feature__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+.feature__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+}
+.feature__list svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--signal-pass);
+}
+
+/* --- node chains --------------------------------------------------------- */
+.chain {
+  display: flex;
+  align-items: stretch;
+  padding: var(--sp-6) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+.chain__node {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  text-align: center;
+}
+.chain__node > .mono {
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+.chain__node--active {
+  border-color: var(--accent);
+  background: var(--bg-active);
+}
+.chain__node--active > .mono {
+  color: var(--accent);
+}
+.chain__node--muted {
+  opacity: 0.6;
+}
+.chain__link {
+  position: relative;
+  flex: 0 0 var(--sp-5);
+  align-self: center;
+  height: 1px;
+  background: var(--line-strong);
+}
+.chain__link::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: 0;
+  border: 3px solid transparent;
+  border-left-color: var(--line-strong);
+}
+/* Dashed, because this is the one step CodeArmor does not take for you. */
+.chain__link--gated {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--line-strong) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+/* Inside the feature panel the chain runs vertically, because the column is
+   too narrow for four horizontal nodes to stay legible. */
+.chain--compact {
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--sp-4);
+}
+.chain--compact .chain__node {
+  align-items: flex-start;
+  text-align: left;
+}
+.chain--compact .chain__link {
+  flex: 0 0 var(--sp-4);
+  width: 1px;
+  height: auto;
+  background: var(--line-strong);
+}
+.chain--compact .chain__link::after {
+  top: auto;
+  right: auto;
+  bottom: -3px;
+  left: -3px;
+  border-left-color: transparent;
+  border-top-color: var(--line-strong);
+}
+.chain--compact .chain__link--gated {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--line-strong) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+/* --- 05 architecture detail ----------------------------------------------
+   A left rule per item instead of a box: it groups without adding four more
+   rectangles to a page that already has enough of them. */
+.specs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-5) var(--sp-6);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+.specs__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--line);
+}
+.specs__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.specs__head svg {
+  color: var(--fg-dim);
+}
+.specs__head h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.specs__foot {
+  margin-left: auto;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.specs__item p {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+
+/* --- 06 data trail ------------------------------------------------------
+   A path, drawn as a path. The question this section answers is "where does
+   my code go", which is a sequence, and a four-card grid cannot express a
+   sequence at all. */
+.trail {
+  list-style: none;
+  padding: 0;
+}
+.trail__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-6);
+}
+.trail__step:last-child {
+  padding-bottom: 0;
+}
+/* The spine is drawn per step rather than once on the list, so it stops at
+   the last marker instead of running past it. */
+.trail__step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 34px;
+  bottom: 0;
+  left: 16px;
+  width: 1px;
+  background: var(--line-strong);
+}
+.trail__marker {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--bg-panel);
+  color: var(--accent);
+}
+.trail__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: 5px;
+}
+.trail__stage {
+  color: var(--fg-dim);
+}
+.trail__body h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--fg);
+}
+.trail__body p {
+  max-width: 76ch;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+
+/* --- 07 contact actions -------------------------------------------------- */
+.contact {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.action {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+  align-items: center;
+  padding: var(--sp-4);
+  /* The base `a` rule underlines with border-bottom. Here that same border is
+     the row divider, so it is set explicitly rather than inherited, and it is
+     held neutral on hover - the background shift and the arrow are the
+     affordance, and an amber rule across a full row reads as an alert. */
+  border-bottom: 1px solid var(--line-faint);
+  transition: background var(--dur-fast) var(--ease);
+}
+.action:last-child {
+  border-bottom: 0;
+}
+.action:hover {
+  background: var(--bg-raised);
+  border-bottom-color: var(--line-faint);
+}
+.action__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-void);
+  color: var(--fg-dim);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.action:hover .action__icon {
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+.action__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.action__text strong {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.action__body {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+.action__foot {
+  font-size: var(--text-2xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.action__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+  transition: color var(--dur-fast) var(--ease);
+}
+.action:hover .action__go {
+  color: var(--accent);
+}
+
+/* --- closing sign-in ----------------------------------------------------- */
+.closer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-7) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  text-align: center;
+  scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+}
+.closer__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 58ch;
+}
+.closer__copy h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+.closer__copy p {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+.closer__features {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2) var(--sp-5);
+  list-style: none;
+}
+.closer__features li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+}
+.closer__features svg {
+  flex-shrink: 0;
+  color: var(--signal-pass);
+}
+
+/* ==========================================================================
+   Responsive
+
+   Not a shrink. Each composition changes shape at the width where its own
+   structure stops working, which is a different width for each one: the
+   capability matrix loses its third column long before the hero has to
+   stack, and the six-agent fan has to become a spine well before that.
+   ========================================================================== */
+
+/* The capability matrix runs out of room for three columns first. */
+@media (max-width: 1080px) {
+  .capsys__row {
+    grid-template-columns: 170px minmax(0, 1fr);
+    gap: var(--sp-3) var(--sp-4);
+  }
+  .capsys__signals {
+    grid-column: 2;
+  }
+  .strip--steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Split screens become vertical storytelling: copy first, then the product. */
+@media (max-width: 960px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: var(--sp-4);
+  }
+  .showcase,
+  .feature {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feature {
+    gap: var(--sp-5);
+  }
+  .specs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The architecture chain turns vertical rather than scrolling sideways. */
+  .chain {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--sp-4);
+  }
+  .chain .chain__node {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .chain .chain__link {
+    flex: 0 0 var(--sp-4);
+    width: 1px;
+    height: auto;
+    align-self: center;
+  }
+  .chain .chain__link::after {
+    top: auto;
+    right: auto;
+    bottom: -3px;
+    left: -3px;
+    border-left-color: transparent;
+    border-top-color: var(--line-strong);
+  }
+  .chain .chain__link--gated {
+    background: repeating-linear-gradient(
+      180deg,
+      var(--line-strong) 0 3px,
+      transparent 3px 7px
+    );
+  }
+}
+
+/* Six agents across is illegible here, so the fan becomes a spine with a
+   branch per agent - the same information, read top to bottom. */
+@media (max-width: 760px) {
+  .fan__agents {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+    padding: 0 0 0 var(--sp-6);
+  }
+  .fan__agents::before {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: var(--sp-3);
+    width: 1px;
+    height: auto;
+  }
+  .fan__agents::after {
+    display: none;
+  }
+  .fan__col {
+    flex-direction: row;
+    align-items: center;
+  }
+  .fan__stem {
+    width: var(--sp-3);
+    height: 1px;
+  }
+  .fan__col .fan__stem:last-child {
+    display: none;
+  }
+  .fan__node {
+    width: 100%;
+    text-align: left;
+  }
+  .flow {
+    align-items: stretch;
+    padding: var(--sp-4) var(--sp-3);
+  }
+  .flow__node {
+    min-width: 0;
+  }
+  .flow__stem {
+    align-self: center;
+  }
+  .strip,
+  .strip--steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+  .mock__readouts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .action {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+  .action__icon {
+    width: 32px;
+    height: 32px;
+  }
+  .action__go {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .lp {
+    gap: var(--sp-7);
+  }
+  .shead h2 {
+    font-size: var(--text-xl);
+  }
+  .hero__facts {
+    gap: var(--sp-4);
+  }
+  .capsys__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .capsys__signals {
+    grid-column: 1;
+  }
+  .mock__gates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trail__step {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: var(--sp-3);
+    padding-bottom: var(--sp-5);
+  }
+  .trail__marker {
+    width: 26px;
+    height: 26px;
+  }
+  .trail__step:not(:last-child)::before {
+    top: 26px;
+    left: 12px;
+  }
+  .closer {
+    padding: var(--sp-6) var(--sp-3);
+  }
+}
+
+/* --- navigation: the current section -------------------------------------
+   Set from an IntersectionObserver in Header.jsx. aria-current carries the
+   state, so the marker below is a presentation of something assistive tech
+   already knows rather than a decoration with no meaning attached. */
+.topbar__nav a {
+  position: relative;
+}
+.topbar__nav a[aria-current='true'] {
+  color: var(--fg);
+}
+.topbar__nav a[aria-current='true']::after {
+  content: '';
+  position: absolute;
+  right: var(--sp-2);
+  bottom: -3px;
+  left: var(--sp-2);
+  height: 1px;
+  background: var(--accent);
+}

@@ -32,15 +32,14 @@
   letter-spacing: var(--track-tight);
   color: var(--fg);
 }
+/* The logo carries its own shield silhouette. The bordered plate here was
+   for a generic lucide glyph that needed containing; keeping it would put a
+   box around a shape that already has an edge. */
 .brand__mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 22px;
   height: 22px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg-void);
-  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .topbar__nav {
@@ -209,94 +208,8 @@
 
 /* The hero visual is a miniature of the real gate panel rather than an
    illustration, so the landing page shows the actual product. */
-.specimen {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  overflow: hidden;
-}
-.specimen__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-void);
-}
-.specimen__row {
-  display: grid;
-  grid-template-columns: 14px 92px 1fr;
-  gap: var(--sp-2);
-  align-items: center;
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--line-faint);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--fg-muted);
-}
-.specimen__row:last-child {
-  border-bottom: 0;
-}
-.specimen__row span:nth-child(2) {
-  color: var(--fg-secondary);
-}
-
 /* --- capability grid ---------------------------------------------------- */
-.capabilities {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-}
-.capability {
-  padding: var(--sp-4);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.capability__icon {
-  color: var(--fg-dim);
-  margin-bottom: var(--sp-3);
-}
-.capability h3 {
-  font-size: var(--text-sm);
-  margin-bottom: var(--sp-2);
-}
-.capability p {
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  color: var(--fg-muted);
-}
-
 /* --- sign in ------------------------------------------------------------ */
-.signin {
-  max-width: 420px;
-}
-.signin__features {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  margin: var(--sp-4) 0;
-}
-.signin__feature {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  font-size: var(--text-sm);
-  color: var(--fg-secondary);
-}
-.signin__feature svg {
-  color: var(--signal-pass);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.signin__note {
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  color: var(--fg-dim);
-  margin-top: var(--sp-4);
-}
-
 /* --- repository rows ---------------------------------------------------- */
 .rows {
   border: 1px solid var(--line);
@@ -1072,9 +985,6 @@
   .topbar__nav {
     display: none;
   }
-  .capability {
-    border-right: 0;
-  }
   .console__body {
     padding: var(--sp-3);
   }
@@ -1089,3 +999,204 @@
     overflow-x: auto;
   }
 }
+
+/* --- waiting --------------------------------------------------------------
+   Skeletons are chrome, so they are monochrome: two steps of the neutral ramp
+   and no colour, per rule 1 in tokens.css. The sweep is the one piece of
+   purely decorative motion in the interface, and it is here because a static
+   grey block reads as a broken image rather than as content on its way. */
+.skeleton {
+  display: block;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--bg-active), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1.4s var(--ease) infinite;
+}
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+/* The global reduced-motion rule caps animations at one iteration, which parks
+   the sweep mid-gradient and leaves a bright band across every block. Drop the
+   highlight entirely instead of freezing it. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    display: none;
+  }
+}
+
+/* Mirrors .row + .row__main exactly, so the real rows land where the
+   placeholders were instead of shifting the list under the cursor. */
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--row-h);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-faint);
+}
+.skeleton-row:last-of-type {
+  border-bottom: 0;
+}
+.skeleton-row__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+
+.skeleton-table {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.skeleton-table__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: 30px;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-faint);
+}
+.skeleton-table__row:last-child {
+  border-bottom: 0;
+}
+
+/* A wait with room to say why it is waiting. Used where the delay can be long
+   enough that silence reads as a hang - the session check absorbs the whole
+   cold start on a sleeping instance. */
+.loading-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  text-align: center;
+}
+.loading-panel svg {
+  color: var(--accent);
+}
+.loading-panel__label {
+  font-size: var(--text-sm);
+  color: var(--fg-secondary);
+}
+.loading-panel__note {
+  max-width: 44ch;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  line-height: var(--leading-normal);
+}
+
+/* --- not found ------------------------------------------------------------
+   Deliberately not styled as an error: no red, no alert triangle. The status
+   code is shown because it is the detail that makes the screen reportable,
+   and it is set in mono at label scale so it reads as a readout rather than
+   as the headline. */
+.notfound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  text-align: center;
+}
+.notfound svg {
+  color: var(--fg-dim);
+}
+.notfound__code {
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--track-label);
+  color: var(--fg-dim);
+}
+.notfound h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+.notfound p {
+  max-width: 48ch;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  line-height: var(--leading-normal);
+}
+.notfound__actions {
+  margin-top: var(--sp-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (max-width: 560px) {
+  .notfound {
+    padding: var(--sp-7) var(--sp-3);
+  }
+  .loading-panel {
+    padding: var(--sp-6) var(--sp-3);
+  }
+  /* The meta column is the first thing to go: the name matters more than two
+     placeholder chips at 360px. */
+  .skeleton-row__meta {
+    display: none;
+  }
+}
+
+/* --- shared section shell -----------------------------------------------
+   The landing page compositions live in landing.css; this is only the anchor
+   target behaviour that every section needs. */
+.sect {
+  display: flex;
+  flex-direction: column;
+  /* The topbar is sticky, so an anchor jump has to clear it. */
+  scroll-margin-top: calc(var(--header-h) + var(--sp-4));
+}
+
+/* Pushed to the bottom edge so the legends line up across the row even when
+   the cells above them are different lengths. */
+.footer__nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.footer__nav a {
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+.footer__nav a:hover {
+  color: var(--fg);
+}
+.footer__line {
+  margin: 0;
+}
+
+/* Four dense cells stop being readable well before the viewport stops being
+   wide, so they halve first and only collapse to one column on a phone. */

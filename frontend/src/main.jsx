@@ -6,6 +6,10 @@ import { AuthProvider } from './context/AuthContext'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/app.css'
+// Last of the four, because a few rules in it deliberately sharpen an
+// app.css class. Importing it from Landing.jsx instead hoisted it to the
+// front of the bundle and inverted that.
+import './styles/landing.css'
 
 // Local development only. The OAuth callback lands on 127.0.0.1, and localhost
 // is a separate origin with its own cookie jar, so opening the app on localhost

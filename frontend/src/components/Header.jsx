@@ -1,7 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ChevronDown, LogOut, ShieldCheck, Trash2, UserCog } from 'lucide-react'
+import { ChevronDown, LogOut, Trash2, UserCog } from 'lucide-react'
 import { GithubMark } from './BrandIcons'
 import { useAuth } from '../context/AuthContext'
+
+const SIGNED_IN_NAV = [
+  ['repositories', 'Repositories'],
+  ['reviews', 'Reviews'],
+]
+
+const LANDING_NAV = [
+  ['product', 'Product'],
+  ['pipeline', 'Pipeline'],
+  ['uses', 'Uses'],
+  ['policies', 'Policies'],
+  ['contact', 'Contact'],
+]
 
 export default function Header() {
   const { user, loading, login, logout, switchAccount, deleteAccount } = useAuth()
@@ -45,6 +58,45 @@ export default function Header() {
     }
   }
 
+  // Which landing section the reader is actually in. A nav that never shows
+  // where you are is a list of links; this is what makes it read as product
+  // navigation. Landing only - the signed-in surfaces have two anchors and no
+  // need for it.
+  const [active, setActive] = useState(null)
+  const onscreen = useRef(new Set())
+
+  useEffect(() => {
+    if (user || loading || typeof IntersectionObserver === 'undefined') return undefined
+
+    const ids = LANDING_NAV.map(([id]) => id)
+    const nodes = ids.map((id) => document.getElementById(id)).filter(Boolean)
+    if (nodes.length === 0) return undefined
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // The callback only reports sections whose visibility CHANGED, so the
+        // set has to be kept across calls - deciding from `entries` alone
+        // picks whichever section happened to cross the line last.
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) onscreen.current.add(entry.target.id)
+          else onscreen.current.delete(entry.target.id)
+        })
+        // `ids` is in document order, so the first hit is the topmost one.
+        const current = ids.find((id) => onscreen.current.has(id))
+        if (current) setActive(current)
+      },
+      // Clears the sticky bar at the top, and stops a section counting as
+      // current the instant its first pixel appears at the bottom.
+      { rootMargin: '-56px 0px -55% 0px' }
+    )
+
+    nodes.forEach((node) => observer.observe(node))
+    return () => {
+      observer.disconnect()
+      onscreen.current.clear()
+    }
+  }, [user, loading])
+
   const jump = (id) => (event) => {
     event.preventDefault()
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -53,17 +105,38 @@ export default function Header() {
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="brand__mark" aria-hidden="true">
-          <ShieldCheck size={13} strokeWidth={2.25} />
-        </span>
+        {/* alt is empty on purpose: the wordmark next to it already says
+            CodeArmor, and a screen reader announcing it twice is noise. */}
+        <img className="brand__mark" src="/logo.png" width="22" height="22" alt="" />
         CodeArmor
       </div>
 
-      {user && (
+      {/* Two different navs, because the two states have nothing in common:
+          signed in, the only places worth going are the work surfaces; signed
+          out, they are the sections that explain the product. */}
+      {user ? (
         <nav className="topbar__nav" aria-label="Main">
-          <a href="#repositories" onClick={jump('repositories')}>Repositories</a>
-          <a href="#reviews" onClick={jump('reviews')}>Reviews</a>
+          {SIGNED_IN_NAV.map(([id, label]) => (
+            <a key={id} href={`#${id}`} onClick={jump(id)}>
+              {label}
+            </a>
+          ))}
         </nav>
+      ) : (
+        !loading && (
+          <nav className="topbar__nav" aria-label="Main">
+            {LANDING_NAV.map(([id, label]) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                aria-current={active === id ? 'true' : undefined}
+                onClick={jump(id)}
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+        )
       )}
 
       <div className="topbar__spacer" />
