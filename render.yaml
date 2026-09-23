@@ -1,12 +1,16 @@
-# Render Blueprint for the CodeArmor API.
+# Render Blueprint for CodeArmor: API, static frontend and Postgres.
 #
 # Everything about the deployment lives here rather than in the dashboard, so
 # it is reviewable, reproducible and revertible. Apply with:
 #   Render Dashboard -> New -> Blueprint -> point at this repo.
+#
+# The live services were provisioned through the Render API, which does not
+# accept a rootDir, so their build and start commands are path-prefixed from
+# the repository root. This file is the equivalent declarative form.
 
 envVarGroups:
   # Shared so that any future worker derives the SAME generated secrets. A
-  # per-service `generateValue` produces a different value per service, and a
+  # per-service generateValue produces a different value per service, and a
   # worker with a different TOKEN_ENCRYPTION_KEY cannot decrypt the tokens the
   # web service wrote.
   - name: codearmor-shared
@@ -27,35 +31,38 @@ envVarGroups:
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
-      # Must be the stable production domain, not a per-deploy preview URL, and
-      # BACKEND_URL must match the OAuth App's callback exactly or GitHub
-      # returns redirect_uri_mismatch.
+      # BACKEND_URL must match the GitHub OAuth App callback exactly, or the
+      # sign-in fails with redirect_uri_mismatch.
       - key: FRONTEND_URL
-        value: https://REPLACE-ME.vercel.app
+        value: https://codearmor-web-kxwt.onrender.com
       - key: BACKEND_URL
-        value: https://REPLACE-ME.onrender.com
+        value: https://codearmor-api.onrender.com
       - key: ALLOWED_ORIGINS
-        value: https://REPLACE-ME.vercel.app
-      # A Vercel frontend calling a Render backend is cross-site, so the
-      # session cookie is only sent when it is SameSite=None AND Secure.
+        value: https://codearmor-web-kxwt.onrender.com
+      # The frontend and the API are on different onrender.com subdomains, so
+      # the session cookie is cross-site: browsers only send it when
+      # SameSite=None AND Secure are both set.
       - key: COOKIE_SECURE
         value: "true"
       - key: COOKIE_SAMESITE
         value: none
+      - key: LOG_FORMAT
+        value: json
 
 services:
   - type: web
     name: codearmor-api
     runtime: python
     # The free plan sleeps after 15 minutes and cold-starts in 30-90s, which a
-    # multi-minute streaming review does not survive gracefully.
-    plan: starter
-    region: oregon
+    # multi-minute streaming review does not survive gracefully. Upgrade to
+    # starter for anything past a demo.
+    plan: free
+    region: singapore
     rootDir: backend
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     # Must bind 0.0.0.0:$PORT: Render port-scans the container and fails the
     # deploy with "no open ports detected" for a 127.0.0.1 bind.
-    # proxy-headers makes request.url https behind Render's router.
+    # proxy-headers makes request.url https behind the Render router.
     startCommand: >-
       uvicorn app.main:app
       --host 0.0.0.0 --port $PORT
@@ -71,12 +78,29 @@ services:
           name: codearmor-db
           property: connectionString
 
+  - type: web
+    name: codearmor-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: (npm ci || npm install) && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Inlined into the public JavaScript bundle at build time, so it must
+      # never hold a secret, and changing it needs a rebuild, not a restart.
+      - key: VITE_API_URL
+        value: https://codearmor-api.onrender.com
+
 databases:
   # Not SQLite. A Render filesystem is wiped on every deploy, restart and
   # instance replacement, which would take every user, connected repository,
   # stored OAuth token and saved review with it.
   - name: codearmor-db
-    plan: basic-256mb
+    # The free plan expires 30 days after creation; basic-256mb is the smallest
+    # plan that persists indefinitely.
+    plan: free
     databaseName: codearmor
     user: codearmor
-    region: oregon
+    region: singapore

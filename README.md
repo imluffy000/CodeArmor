@@ -214,7 +214,7 @@ most exactly when the review was partial or an agent died.
 
 ```
 ┌─────────────────────────┐        ┌──────────────────────────────────┐
-│  React + Vite (Vercel)  │        │      FastAPI (Render)            │
+│  React + Vite (Render)  │        │      FastAPI (Render)            │
 │                         │        │                                  │
 │  repo picker            │  HTTPS │  /auth    GitHub OAuth, sessions  │
 │  PR list                │◄──────►│  /repos   connect, sync, PRs      │
@@ -436,9 +436,9 @@ source code.
 - GitHub OAuth authorization code flow, with a signed, short-lived, single-use
   `state` cookie
 - Session is a JWT in an `httpOnly` cookie, `Secure` + `SameSite=None` in
-  production (a Vercel → Render call is cross-site; a `SameSite=Lax` cookie is
-  never sent on `fetch` or `EventSource`, which is why production login could
-  not work before)
+  production. The frontend and the API sit on different hosts, so the call is
+  cross-site, and a `SameSite=Lax` cookie is never sent on `fetch` or
+  `EventSource` - which is why production login could not work before
 - The JWT carries the user's `session_version`. Signing out increments it, which
   **invalidates every cookie ever issued to that user** — a copied session stops
   working immediately rather than lasting out its TTL
@@ -638,16 +638,19 @@ see [Roadmap](#roadmap).
 
 ## Deploying
 
-The repository ships [`render.yaml`](render.yaml) and
-[`frontend/vercel.json`](frontend/vercel.json), so the deployment is reviewable
-rather than living in a dashboard nobody can diff.
+Both halves run on Render, declared in [`render.yaml`](render.yaml), so the
+deployment is reviewable rather than living in a dashboard nobody can diff.
 
-### Backend on Render
+| Resource | What it is |
+|---|---|
+| `codearmor-api` | The FastAPI service |
+| `codearmor-web` | The built frontend, served as a static site from Render's CDN |
+| `codearmor-db` | Managed Postgres |
 
-Render Dashboard → New → Blueprint → point at this repo. Then set the four
-`sync: false` secrets and replace the `REPLACE-ME` URLs.
+Render Dashboard -> New -> Blueprint -> point at this repo, then set the four
+`sync: false` secrets in the `codearmor-shared` env group.
 
-If you configure it by hand instead:
+### Backend
 
 | Setting | Value |
 |---|---|
@@ -659,30 +662,43 @@ If you configure it by hand instead:
 `--host 0.0.0.0` is not optional: Render port-scans the container and fails the
 deploy with "no open ports detected" for a `127.0.0.1` bind.
 
-### Frontend on Vercel
+### Frontend
 
 | Setting | Value |
 |---|---|
 | Root directory | `frontend` |
-| Framework | Vite |
-| Install / Build | `npm ci` / `npm run build` |
-| Output | `dist` |
-| Env (Production **and** Preview) | `VITE_API_URL=https://your-api.onrender.com` |
+| Build command | `npm ci && npm run build` |
+| Publish directory | `dist` |
+| Env | `VITE_API_URL=https://<api-host>.onrender.com` |
 
-Do **not** set `NODE_ENV=production` on Vercel: `vite` is a devDependency, npm
-would skip it, and the build fails with `vite: not found`.
+Everything `VITE_*` is inlined into the public JavaScript bundle at build time.
+Never put a secret there, and note that changing it requires a rebuild, not a
+restart.
 
-Everything `VITE_*` is inlined into the public bundle. Never put a secret there.
+Do **not** set `NODE_ENV=production`: `vite` is a devDependency, npm would skip
+it, and the build fails with `vite: not found`.
+
+The frontend and the API sit on different `onrender.com` subdomains, so the
+session cookie is still cross-site: it needs `COOKIE_SAMESITE=none` together
+with `COOKIE_SECURE=true`. Hosting the frontend somewhere else instead - Vercel,
+Netlify, any static host - changes nothing but `ALLOWED_ORIGINS`, and
+[`frontend/vercel.json`](frontend/vercel.json) is kept for that case.
 
 ### After deploying
 
-1. Update the OAuth App: homepage to the Vercel URL, callback to
-   `https://your-api.onrender.com/auth/github/callback`
-2. Set `BACKEND_URL` to exactly that host — `build_authorize_url` derives the
-   callback from it, and a mismatch is `redirect_uri_mismatch`
-3. Confirm `ALLOWED_ORIGINS` contains your **stable** production domain, not a
+1. Update the GitHub OAuth App: homepage to the frontend URL, and
+   **Authorization callback URL** to `https://<api-host>/auth/github/callback`
+2. Set `BACKEND_URL` to exactly that host - `build_authorize_url` derives the
+   callback from it, and any mismatch is `redirect_uri_mismatch`
+3. Confirm `ALLOWED_ORIGINS` contains the **stable** frontend origin, not a
    per-deploy preview URL
-4. Check `GET /readyz` — it reports config validity and database reachability
+4. Check `GET /readyz` - it reports config validity and database reachability
+   separately, so a failed boot names which of the two is wrong
+
+On the free plans the API sleeps after 15 minutes and cold-starts in 30-90s,
+which a multi-minute streaming review does not survive gracefully, and a free
+Postgres expires 30 days after it is created. `starter` and `basic-256mb` are
+the smallest plans that avoid both.
 
 ### Why Postgres, not SQLite
 
