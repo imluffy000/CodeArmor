@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link2, Lock, Plus, Search } from 'lucide-react'
 import { api } from '../api'
-import { Banner, Spinner, Tag } from './primitives'
+import { Banner, SkeletonRows, Tag } from './primitives'
 
 export default function RepoConnect({ onConnected }) {
   const [mode, setMode] = useState('browse')
@@ -102,7 +102,9 @@ export default function RepoConnect({ onConnected }) {
           </div>
 
           {loading ? (
-            <Spinner label="Loading repositories" />
+            <div className="picker__list">
+              <SkeletonRows rows={4} bare label="Searching your repositories" />
+            </div>
           ) : repos.length === 0 ? (
             <p className="muted" style={{ fontSize: 'var(--text-sm)' }}>
               {search ? `Nothing matched "${search}".` : 'No repositories found.'}

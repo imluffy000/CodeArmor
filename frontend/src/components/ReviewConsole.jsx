@@ -10,6 +10,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import ConsoleSkeleton from './ConsoleSkeleton'
 import { GithubMark } from './BrandIcons'
 import { api, API_BASE } from '../api'
 import MergeGate from './MergeGate'
@@ -18,6 +19,7 @@ import { formatMessageText } from '../lib/markdown.jsx'
 import {
   Banner,
   Empty,
+  NotFound,
   Readout,
   SeverityTag,
   StatusIcon,
@@ -70,6 +72,9 @@ function Console({ review, onExit }) {
   const [error, setError] = useState(null)
   const [stages, setStages] = useState(PENDING)
   const [coverageNotice, setCoverageNotice] = useState(null)
+  // A stored review that was deleted, or that belongs to another account,
+  // answers 404. That gets its own screen rather than the failure banner.
+  const [notFound, setNotFound] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
   const [tab, setTab] = useState('findings')
@@ -93,6 +98,7 @@ function Console({ review, onExit }) {
     let cancelled = false
     setLoading(true)
     setError(null)
+    setNotFound(false)
     api(`/reviews/${reviewId}`)
       .then((stored) => {
         if (cancelled) return
@@ -102,7 +108,8 @@ function Console({ review, onExit }) {
       })
       .catch((err) => {
         if (cancelled) return
-        setError(err.message)
+        if (err.isNotFound) setNotFound(true)
+        else setError(err.message)
         setLoading(false)
       })
     return () => { cancelled = true }
@@ -122,6 +129,7 @@ function Console({ review, onExit }) {
     let closed = false
     setLoading(true)
     setError(null)
+    setNotFound(false)
     setCoverageNotice(null)
     setStages({ ...PENDING, fetch_diff: 'active' })
 
@@ -292,6 +300,49 @@ function Console({ review, onExit }) {
       recommendation: lines.find((l) => /^recommendation:/i.test(l)),
     }
   }, [data?.summary])
+
+  // --------------------------------------------------------------- missing
+  if (notFound) {
+    return (
+      <div className="page" style={{ maxWidth: 560 }}>
+        <NotFound
+          code="404"
+          title="This review no longer exists"
+          actions={
+            <>
+              <button className="btn btn--sm btn--primary" onClick={onExit}>
+                <ArrowLeft size={12} strokeWidth={2} aria-hidden="true" />
+                Back to repositories
+              </button>
+              {repoId && (
+                <button
+                  className="btn btn--sm"
+                  onClick={() => {
+                    setNotFound(false)
+                    setAttempt((n) => n + 1)
+                  }}
+                >
+                  Run a fresh review
+                </button>
+              )}
+            </>
+          }
+        >
+          It was deleted along with its repository, or it belongs to another
+          account. A fresh review would read {repoFullName}#{prNumber} as it
+          stands now.
+        </NotFound>
+      </div>
+    )
+  }
+
+  // --------------------------------------------------------------- opening
+  // Fetching a saved review is not a run in progress. Falling through to the
+  // stage list below showed eight queued agents for a review that finished
+  // days ago, complete with a 0/8 progress meter.
+  if (loading && reviewId && attempt === 0) {
+    return <ConsoleSkeleton label="Opening the saved review" />
+  }
 
   // ---------------------------------------------------------------- running
   if (loading || error) {

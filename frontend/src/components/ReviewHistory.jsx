@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import { History } from 'lucide-react'
 import { api } from '../api'
-import { Banner, Empty, Spinner, StatusIcon, Tag, formatWhen, verdictMeta } from './primitives'
+import {
+  Banner,
+  Empty,
+  SkeletonRows,
+  StatusIcon,
+  Tag,
+  formatWhen,
+  verdictMeta,
+} from './primitives'
 
 const VERDICT_STATUS = { blocked: 'fail', caution: 'warn', clear: 'pass' }
 
@@ -29,7 +37,7 @@ export default function ReviewHistory({ onOpen, refreshKey }) {
   }, [refreshKey])
 
   if (error) return <Banner tone="fail">Could not load your reviews: {error}</Banner>
-  if (reviews === null) return <Spinner label="Loading reviews" />
+  if (reviews === null) return <SkeletonRows rows={3} label="Loading reviews" />
   if (reviews.length === 0) {
     return <Empty icon={History}>No reviews yet. Run one from a pull request above.</Empty>
   }

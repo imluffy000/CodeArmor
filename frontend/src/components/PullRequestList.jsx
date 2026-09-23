@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { ArrowRight, GitPullRequest, Play } from 'lucide-react'
+import { ArrowRight, GitPullRequest, Play, RotateCw, Unplug } from 'lucide-react'
 import { api } from '../api'
-import { Banner, Empty, Spinner, Tag } from './primitives'
+import { Banner, Empty, NotFound, SkeletonRows, Tag } from './primitives'
 
 const STATES = [
   { id: 'open', label: 'Open' },
@@ -16,6 +16,9 @@ export default function PullRequestList({ repo, onReviewStart }) {
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // A repository disconnected in another tab answers 404 here, which is a
+  // missing resource rather than a failed request.
+  const [gone, setGone] = useState(false)
   // Posting writes to the repository under the signed-in GitHub identity, so
   // it is an explicit per-review choice and starts off.
   const [post, setPost] = useState(false)
@@ -24,6 +27,7 @@ export default function PullRequestList({ repo, onReviewStart }) {
     let cancelled = false
     setLoading(true)
     setError('')
+    setGone(false)
     if (page === 1) setPulls(null)
 
     api(`/repos/${repo.id}/pulls?state=${state}&page=${page}`)
@@ -33,7 +37,9 @@ export default function PullRequestList({ repo, onReviewStart }) {
         setHasMore(data.has_more)
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message)
+        if (cancelled) return
+        if (err.isNotFound) setGone(true)
+        else setError(err.message)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -43,6 +49,27 @@ export default function PullRequestList({ repo, onReviewStart }) {
       cancelled = true
     }
   }, [repo.id, state, page])
+
+  // Filters and a review button are meaningless against a repository that
+  // is not there, so this replaces the panel rather than sitting above it.
+  if (gone) {
+    return (
+      <NotFound
+        code="404"
+        icon={Unplug}
+        title="This repository is no longer connected"
+        actions={
+          <button className="btn btn--sm" onClick={() => window.location.reload()}>
+            <RotateCw size={12} strokeWidth={2} aria-hidden="true" />
+            Refresh
+          </button>
+        }
+      >
+        It was disconnected, or the GitHub account that owns it changed. Refresh to
+        bring the repository list up to date.
+      </NotFound>
+    )
+  }
 
   return (
     <div className="stack">
@@ -75,7 +102,7 @@ export default function PullRequestList({ repo, onReviewStart }) {
       </div>
 
       {error && <Banner tone="fail">{error}</Banner>}
-      {pulls === null && loading && <Spinner label="Loading pull requests" />}
+      {pulls === null && loading && <SkeletonRows rows={4} label="Loading pull requests" />}
       {pulls !== null && pulls.length === 0 && !loading && (
         <Empty icon={GitPullRequest}>
           No {state === 'all' ? '' : state} pull requests in this repository.

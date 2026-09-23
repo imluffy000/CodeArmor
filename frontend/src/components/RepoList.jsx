@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, ExternalLink, Lock, RefreshCw, Star, Unplug } from 'lucide-react'
 import { api } from '../api'
 import PullRequestList from './PullRequestList'
-import { Banner, Empty, Spinner, StatusIcon } from './primitives'
+import { Banner, Empty, SkeletonRows, StatusIcon } from './primitives'
 
 const SYNC = {
   pending: { label: 'Queued', status: 'pending' },
@@ -91,7 +91,7 @@ export default function RepoList({ refreshKey, onReviewStart }) {
     }
   }
 
-  if (loading) return <Spinner label="Loading connected repositories" />
+  if (loading) return <SkeletonRows rows={3} label="Loading connected repositories" />
 
   return (
     <div className="stack">

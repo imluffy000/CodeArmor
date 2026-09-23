@@ -5,6 +5,7 @@ import {
   CircleDashed,
   HelpCircle,
   Loader2,
+  SearchX,
   ShieldCheck,
   XCircle,
 } from 'lucide-react'
@@ -87,11 +88,76 @@ export function Empty({ icon: Icon = CircleDashed, children }) {
   )
 }
 
-export function Spinner({ label = 'Loading' }) {
+/* --- waiting --------------------------------------------------------------
+   Skeletons rather than a centred spinner for anything that resolves into a
+   list of rows. A spinner discards the layout and then snaps it back, so the
+   page jumps at the moment the user starts reading; a skeleton holds the
+   geometry the real rows will occupy. It also says *what* is coming - "three
+   repository rows" - instead of "something is happening somewhere". */
+
+export function Skeleton({ width = '100%', height = 10, radius, style }) {
   return (
-    <div className="empty" role="status">
-      <Loader2 size={18} strokeWidth={2} className="spin" aria-hidden="true" />
-      <p>{label}</p>
+    <span
+      className="skeleton"
+      aria-hidden="true"
+      style={{ width, height, borderRadius: radius, ...style }}
+    />
+  )
+}
+
+/**
+ * Placeholder rows at the height the real ones will be. `bare` drops the
+ * panel border for use inside a container that already draws one, which
+ * otherwise reads as a box nested in a box.
+ */
+export function SkeletonRows({ rows = 3, label = 'Loading', bare = false }) {
+  return (
+    <div className={bare ? undefined : 'rows'} role="status" aria-busy="true">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="skeleton-row">
+          <Skeleton width={13} height={13} radius="var(--radius-full)" />
+          {/* Staggered widths: rows of identical bars read as a loading
+              graphic, varied ones read as text that has not arrived. */}
+          <Skeleton width={`${48 - i * 7}%`} />
+          <span className="skeleton-row__meta">
+            <Skeleton width={36} height={9} />
+            <Skeleton width={52} height={9} />
+          </span>
+        </div>
+      ))}
+      <span className="u-hidden">{label}</span>
+    </div>
+  )
+}
+
+/** A centred wait with room to explain why it is taking this long. */
+export function LoadingPanel({ label = 'Loading', note }) {
+  return (
+    <div className="loading-panel" role="status">
+      <Loader2 size={20} strokeWidth={2} className="spin" aria-hidden="true" />
+      <p className="loading-panel__label">{label}</p>
+      {note && <p className="loading-panel__note">{note}</p>}
+    </div>
+  )
+}
+
+/* --- not found ------------------------------------------------------------
+   A missing resource is not a failure and must not be reported as one - a red
+   alert banner for "this review was deleted" trains people to ignore red.
+
+   This screen also never offers a retry. The API answers 404 both for
+   something that no longer exists and for something that belongs to another
+   account, so there is nothing to retry into, and on a review in particular a
+   retry would spend six model calls to fail the same way. */
+
+export function NotFound({ code, title, icon: Icon = SearchX, children, actions }) {
+  return (
+    <div className="notfound" role="status">
+      <Icon size={26} strokeWidth={1.5} aria-hidden="true" />
+      {code && <span className="notfound__code mono">{code}</span>}
+      <h2>{title}</h2>
+      {children && <p>{children}</p>}
+      {actions && <div className="cluster notfound__actions">{actions}</div>}
     </div>
   )
 }

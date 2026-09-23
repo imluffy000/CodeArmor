@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <!-- Paints the mobile browser chrome dark too, so the address bar does not
+         flash white around a dark app. -->
+    <meta name="theme-color" content="#0b0b0c" />
     <title>CodeArmor</title>
     <meta
       name="description"
@@ -20,10 +23,129 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
     />
 
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- favicon.ico carries 16/32/48 for older browsers and the Windows
+         taskbar; the PNG is what modern browsers actually pick up. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/icon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/icon-16.png" type="image/png" sizes="16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Link previews. og:image has to be absolute: a relative path is
+         resolved against the scraper, not against this page. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CodeArmor - AI pull request review with a merge gate" />
+    <meta
+      property="og:description"
+      content="Six specialist reviewers read your pull request in parallel, then a deterministic gate reports what has to be fixed before merge."
+    />
+    <meta property="og:url" content="https://codearmor-web-kxwt.onrender.com/" />
+    <meta property="og:image" content="https://codearmor-web-kxwt.onrender.com/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- The app shell.
+         Everything below is deliberately inline and uses literal colours
+         rather than the tokens: it has to render before the stylesheet and
+         before the bundle, which is exactly the window it exists to cover. In
+         development Vite injects the CSS through JavaScript, so a token here
+         would resolve to nothing on the first paint.
+         Two separate jobs: the background colour stops the white flash that a
+         dark app otherwise opens with, and the mark plus the indeterminate bar
+         say "this is starting" during the ~190 kB download, the parse, and the
+         webfonts. React removes it once it has committed (see main.jsx). -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0b0b0c;
+        color: #ededee;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #0b0b0c;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        transition: opacity 240ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      #splash[data-done] {
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* No plate and no border: the mark is a shield with its own
+         silhouette, so boxing it makes it read as a placeholder. */
+      .splash__mark,
+      .splash__mark img {
+        display: block;
+        width: 44px;
+        height: 44px;
+      }
+      .splash__name {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #83838c;
+      }
+      /* An indeterminate bar, not a percentage: nothing here knows how far
+         along the download is, and inventing a number would be a lie. */
+      .splash__bar {
+        position: relative;
+        width: 132px;
+        height: 2px;
+        overflow: hidden;
+        background: #24242a;
+        border-radius: 999px;
+      }
+      .splash__bar span {
+        position: absolute;
+        inset: 0;
+        width: 38%;
+        background: #ffab2e;
+        border-radius: 999px;
+        animation: splash-slide 1.15s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+      }
+      @keyframes splash-slide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(264%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .splash__bar span {
+          animation: none;
+          width: 100%;
+          opacity: 0.5;
+        }
+        #splash {
+          transition: none;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="splash">
+      <span class="splash__mark">
+        <!-- The same file the tab icon comes from, so the splash and the
+             favicon cannot drift apart. -->
+        <img src="/logo.png" width="44" height="44" alt="" />
+      </span>
+      <p class="splash__name">CodeArmor</p>
+      <div class="splash__bar" role="progressbar" aria-label="Loading CodeArmor">
+        <span></span>
+      </div>
+    </div>
+
     <noscript>CodeArmor needs JavaScript enabled.</noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>

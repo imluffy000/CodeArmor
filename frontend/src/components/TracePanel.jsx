@@ -1,7 +1,46 @@
 import React, { useEffect, useState } from 'react'
 import { Activity } from 'lucide-react'
 import { api } from '../api'
-import { Banner, Readout, Spinner, StatusIcon, formatCost, formatDuration, formatTokens } from './primitives'
+import {
+  Banner,
+  Empty,
+  Readout,
+  Skeleton,
+  StatusIcon,
+  formatCost,
+  formatDuration,
+  formatTokens,
+} from './primitives'
+
+// Holds the shape of the readout strip and the seven agent rows, so the tab
+// does not resize under the reader when the trace lands.
+function TraceSkeleton() {
+  return (
+    <div className="stack" role="status" aria-busy="true">
+      <div className="readout-strip">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="readout">
+            <Skeleton width={46} height={20} />
+            <Skeleton width={38} height={8} style={{ marginTop: 6 }} />
+          </div>
+        ))}
+      </div>
+      <div className="skeleton-table">
+        {Array.from({ length: 7 }, (_, i) => (
+          <div key={i} className="skeleton-table__row">
+            <Skeleton width="20%" />
+            <Skeleton width="12%" />
+            {/* The latency column is a bar chart, so its placeholder
+                varies in width the way the real bars will. */}
+            <Skeleton width={`${28 + ((i * 17) % 48)}%`} />
+            <Skeleton width="10%" />
+          </div>
+        ))}
+      </div>
+      <span className="u-hidden">Loading the trace</span>
+    </div>
+  )
+}
 
 // The trace: what each agent cost, how long it took, and how its output
 // parsed. This is what makes "the security agent missed this" answerable
@@ -9,18 +48,34 @@ import { Banner, Readout, Spinner, StatusIcon, formatCost, formatDuration, forma
 export default function TracePanel({ reviewId }) {
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
+  // Reviews saved before tracing existed have no trace row, and the ops
+  // endpoint is user-scoped, so both answer 404. Neither is a fault.
+  const [missing, setMissing] = useState(false)
 
   useEffect(() => {
     if (!reviewId) return undefined
     let cancelled = false
+    setError(null)
+    setMissing(false)
     api(`/ops/reviews/${reviewId}/trace`)
       .then((data) => { if (!cancelled) setTrace(data) })
-      .catch((err) => { if (!cancelled) setError(err.message) })
+      .catch((err) => {
+        if (cancelled) return
+        if (err.isNotFound) setMissing(true)
+        else setError(err.message)
+      })
     return () => { cancelled = true }
   }, [reviewId])
 
+  if (missing) {
+    return (
+      <Empty icon={Activity}>
+        No trace was recorded for this review.
+      </Empty>
+    )
+  }
   if (error) return <Banner tone="warn">Could not load the trace: {error}</Banner>
-  if (!trace) return <Spinner label="Loading trace" />
+  if (!trace) return <TraceSkeleton />
 
   const agents = trace.agents || []
   const slowest = Math.max(1, ...agents.map((a) => a.duration_ms || 0))

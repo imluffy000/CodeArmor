@@ -48,6 +48,9 @@ export class ApiError extends Error {
     this.requestId = requestId
     this.isNetwork = isNetwork
     this.isAuthError = status === 401
+    // 404 means the thing is gone or was never yours to see. Callers
+    // render that as a missing resource, not as a failure to retry.
+    this.isNotFound = status === 404
   }
 }
 
