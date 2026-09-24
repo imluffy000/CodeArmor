@@ -16,7 +16,7 @@ const POLL_MS = 2000
 // instance awake and showing "Syncing" with no way out.
 const MAX_POLLS = 60
 
-export default function RepoList({ refreshKey, onReviewStart }) {
+export default function RepoList({ refreshKey, onReviewStart, onLoaded, expandRequest }) {
   const [repos, setRepos] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -24,11 +24,21 @@ export default function RepoList({ refreshKey, onReviewStart }) {
   const [busyId, setBusyId] = useState(null)
   const polls = useRef(0)
 
+  // Held in a ref, not read from the closure. `load` is a useCallback that the
+  // mount effect depends on, so taking `onLoaded` as a dependency would give
+  // it a new identity on every render of the parent and re-fetch in a loop.
+  const onLoadedRef = useRef(onLoaded)
+  useEffect(() => {
+    onLoadedRef.current = onLoaded
+  }, [onLoaded])
+
   const load = useCallback(async () => {
     try {
       const data = await api('/repos')
       setRepos(data.repos)
       setError(null)
+      // The sidebar renders the same list, and one request should serve both.
+      if (onLoadedRef.current) onLoadedRef.current(data.repos)
       return data.repos
     } catch (err) {
       // Swallowing this rendered "no repositories connected" to a signed-in
@@ -44,6 +54,12 @@ export default function RepoList({ refreshKey, onReviewStart }) {
     polls.current = 0
     load()
   }, [refreshKey, load])
+
+  // The sidebar asks for a repository to be opened. It carries a timestamp so
+  // that clicking the same one twice still registers as a new request.
+  useEffect(() => {
+    if (expandRequest) setExpandedId(expandRequest.id)
+  }, [expandRequest])
 
   // Depend on the boolean, not on `repos`: each response is a new array
   // identity, so depending on the array restarted the interval every tick and

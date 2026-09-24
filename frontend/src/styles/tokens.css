@@ -136,7 +136,11 @@
      action and is sized to be reachable rather than compact. */
   --header-h: 48px;
   --topbar-h: 64px;
+  /* Two different rails. --sidebar-w is the review console's, which is dense
+     and fixed. --nav-w is the dashboard sidebar, which carries labels and a
+     repository list and needs the room. */
   --sidebar-w: 236px;
+  --nav-w: 264px;
 
   /* --- shape ------------------------------------------------------------- */
   --radius: 2px;

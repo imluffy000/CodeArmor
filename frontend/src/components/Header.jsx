@@ -2,11 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ChevronDown, LogOut, Trash2, UserCog } from 'lucide-react'
 import { GithubMark } from './BrandIcons'
 import { useAuth } from '../context/AuthContext'
-
-const SIGNED_IN_NAV = [
-  ['repositories', 'Repositories'],
-  ['reviews', 'Reviews'],
-]
+import { useCurrentSection } from '../lib/useCurrentSection'
 
 const LANDING_NAV = [
   ['product', 'Product'],
@@ -62,47 +58,12 @@ export default function Header() {
     }
   }
 
-  // Which landing section the reader is actually in. A nav that never shows
-  // where you are is a list of links; this is what makes it read as product
-  // navigation. Landing only - the signed-in surfaces have two anchors and no
-  // need for it.
-  const [active, setActive] = useState(null)
-  const onscreen = useRef(new Set())
-
-  useEffect(() => {
-    if (!anonymous || typeof IntersectionObserver === 'undefined') return undefined
-
-    const ids = LANDING_NAV.map(([id]) => id)
-    const nodes = ids.map((id) => document.getElementById(id)).filter(Boolean)
-    if (nodes.length === 0) return undefined
-
-    const bar = document.querySelector('.topbar')
-    const barOffset = Math.round(bar ? bar.getBoundingClientRect().height : 64) + 8
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // The callback only reports sections whose visibility CHANGED, so the
-        // set has to be kept across calls - deciding from `entries` alone
-        // picks whichever section happened to cross the line last.
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) onscreen.current.add(entry.target.id)
-          else onscreen.current.delete(entry.target.id)
-        })
-        // `ids` is in document order, so the first hit is the topmost one.
-        const current = ids.find((id) => onscreen.current.has(id))
-        if (current) setActive(current)
-      },
-      // Measured rather than hardcoded: this has to clear the sticky bar, and
-      // a constant here silently goes wrong the next time the bar is resized.
-      { rootMargin: `-${barOffset}px 0px -55% 0px` }
-    )
-
-    nodes.forEach((node) => observer.observe(node))
-    return () => {
-      observer.disconnect()
-      onscreen.current.clear()
-    }
-  }, [anonymous])
+  // Marks the section being read. The observer logic lives in the hook,
+  // because the dashboard sidebar needs exactly the same thing.
+  const active = useCurrentSection(
+    LANDING_NAV.map(([id]) => id),
+    anonymous
+  )
 
   const jump = (id) => (event) => {
     event.preventDefault()
@@ -118,32 +79,21 @@ export default function Header() {
         CodeArmor
       </div>
 
-      {/* Two different navs, because the two states have nothing in common:
-          signed in, the only places worth going are the work surfaces; signed
-          out, they are the sections that explain the product. */}
-      {user ? (
+      {/* Signed in, the destinations live in the dashboard sidebar. Only
+          the landing page needs nav in the bar. */}
+      {anonymous && (
         <nav className="topbar__nav" aria-label="Main">
-          {SIGNED_IN_NAV.map(([id, label]) => (
-            <a key={id} href={`#${id}`} onClick={jump(id)}>
+          {LANDING_NAV.map(([id, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              aria-current={active === id ? 'true' : undefined}
+              onClick={jump(id)}
+            >
               {label}
             </a>
           ))}
         </nav>
-      ) : (
-        anonymous && (
-          <nav className="topbar__nav" aria-label="Main">
-            {LANDING_NAV.map(([id, label]) => (
-              <a
-                key={id}
-                href={`#${id}`}
-                aria-current={active === id ? 'true' : undefined}
-                onClick={jump(id)}
-              >
-                {label}
-              </a>
-            ))}
-          </nav>
-        )
       )}
 
       <div className="topbar__spacer" />

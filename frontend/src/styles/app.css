@@ -1245,3 +1245,224 @@
 
 /* Four dense cells stop being readable well before the viewport stops being
    wide, so they halve first and only collapse to one column on a phone. */
+
+/* ==========================================================================
+   Dashboard sidebar
+
+   The signed-in surface is a two-column workspace rather than a single centred
+   column. The two topbar links it replaces were a thin use of a wide bar; a
+   rail earns that space by also carrying the connected repositories, which is
+   the list you actually navigate by.
+
+   Depth here comes from the neutral ramp in tokens.css, not from new colour:
+   the content sits on --bg-base, the rail a step up on --bg-panel, a hovered
+   row another step on --bg-raised, and the current row on --bg-active with an
+   accent marker. Four surfaces, one hue, which is what keeps "where am I"
+   legible without spraying colour at it.
+   ========================================================================== */
+.workspace {
+  display: grid;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-3);
+  border-right: 1px solid var(--line);
+  background: var(--bg-panel);
+  /* Sticks below the bar and scrolls on its own, so a long repository list
+     never pushes the nav off the top of the screen. */
+  position: sticky;
+  top: var(--topbar-h);
+  height: calc(100dvh - var(--topbar-h));
+  overflow-y: auto;
+}
+
+.sidenav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 40px rows and a 15px label: this is a primary destination list, not the
+   34px data rows of the console. */
+.sidenav__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--radius);
+  font-size: var(--text-base);
+  color: var(--fg-secondary);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sidenav__item svg {
+  flex-shrink: 0;
+  color: var(--fg-dim);
+  transition: color var(--dur-fast) var(--ease);
+}
+.sidenav__item:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
+}
+.sidenav__item:hover svg {
+  color: var(--fg-secondary);
+}
+.sidenav__item[aria-current='true'] {
+  background: var(--bg-active);
+  color: var(--fg);
+}
+.sidenav__item[aria-current='true'] svg {
+  color: var(--accent);
+}
+/* The marker is the one saturated thing in the rail, and it means exactly one
+   thing: you are here. */
+.sidenav__item[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: -1px;
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+.sidenav__item--action {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-faint);
+}
+.sidebar__group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+}
+.sidebar__count {
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-full);
+  background: var(--bg-raised);
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+}
+.sidebar__empty {
+  padding: 0 var(--sp-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-dim);
+}
+
+.siderepos {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.siderepo {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
+  gap: var(--sp-2);
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease);
+}
+.siderepo:hover {
+  background: var(--bg-raised);
+}
+.siderepo__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--fg-secondary);
+}
+.siderepo:hover .siderepo__name {
+  color: var(--fg);
+}
+.siderepo__lock {
+  color: var(--fg-dim);
+}
+.siderepo__count {
+  min-width: 18px;
+  text-align: right;
+  font-size: var(--text-2xs);
+  color: var(--fg-dim);
+}
+
+.sidebar__foot {
+  margin-top: auto;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-faint);
+}
+
+/* The content column is already inset by the rail, so it does not need the
+   landing page's full width, and it keeps a comfortable measure instead. */
+.page--app {
+  max-width: 1080px;
+  padding-top: var(--sp-5);
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 224px minmax(0, 1fr);
+  }
+}
+
+/* Below this the rail costs more than it gives, so it becomes a horizontal
+   strip: the destinations stay, the repository list drops because the page
+   below it is that same list. */
+@media (max-width: 900px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    gap: 0;
+    padding: var(--sp-2) var(--sp-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sidenav {
+    flex-direction: row;
+    gap: var(--sp-1);
+    overflow-x: auto;
+  }
+  .sidenav__item {
+    min-height: 34px;
+    white-space: nowrap;
+    font-size: var(--text-sm);
+  }
+  .sidenav__item[aria-current='true']::before {
+    top: auto;
+    right: var(--sp-3);
+    bottom: -1px;
+    left: var(--sp-3);
+    width: auto;
+    height: 2px;
+  }
+  .sidebar__group,
+  .sidebar__foot {
+    display: none;
+  }
+}

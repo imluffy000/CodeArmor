@@ -1,10 +1,11 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react'
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import ConsoleSkeleton from './components/ConsoleSkeleton'
 import Header from './components/Header'
 import Landing from './components/Landing'
 import RepoConnect from './components/RepoConnect'
 import RepoList from './components/RepoList'
 import ReviewHistory from './components/ReviewHistory'
+import Sidebar from './components/Sidebar'
 import { Banner, LoadingPanel } from './components/primitives'
 import { useAuth } from './context/AuthContext'
 
@@ -56,6 +57,15 @@ export default function App() {
   const [repoRefreshKey, setRepoRefreshKey] = useState(0)
   const [activeReview, setActiveReview] = useState(null)
   const [notice, setNotice] = useState(null)
+  // Lifted so the sidebar and the list render the same data from one request.
+  // null means "not loaded yet", which the sidebar shows as skeleton rows
+  // rather than as an empty list.
+  const [repos, setRepos] = useState(null)
+  const [expandRequest, setExpandRequest] = useState(null)
+
+  // Stable, so RepoList can keep it in a ref without re-fetching.
+  const handleRepos = useCallback((list) => setRepos(list), [])
+  const openRepo = useCallback((id) => setExpandRequest({ id, at: Date.now() }), [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -81,31 +91,37 @@ export default function App() {
   const onLanding = !user && (!loading || !returning)
   const checkingSession = loading && returning
 
+  const banners = (
+    <>
+      {notice && (
+        <Banner
+          tone="warn"
+          actions={
+            <button className="btn btn--sm" onClick={() => setNotice(null)}>
+              Dismiss
+            </button>
+          }
+        >
+          {notice}
+        </Banner>
+      )}
+      {error && <Banner tone="fail">Cannot reach the CodeArmor API: {error}</Banner>}
+    </>
+  )
+
   return (
     <div className="shell">
       <Header />
 
-      <main className="page">
-        {notice && (
-          <Banner
-            tone="warn"
-            actions={
-              <button className="btn btn--sm" onClick={() => setNotice(null)}>
-                Dismiss
-              </button>
-            }
-          >
-            {notice}
-          </Banner>
-        )}
-        {error && <Banner tone="fail">Cannot reach the CodeArmor API: {error}</Banner>}
+      {/* Banners sit inside whichever main is rendered, so they stay within
+          the content column rather than spanning the sidebar. */}
+      {user ? (
+        <div className="workspace">
+          <Sidebar repos={repos} onSelectRepo={openRepo} />
 
-        {onLanding && <Landing onLogin={login} />}
+          <main className="page page--app">
+            {banners}
 
-        {checkingSession && <SessionCheck />}
-
-        {user && (
-          <>
             <section id="repositories">
               <div className="section-title">
                 <h2>Repositories</h2>
@@ -113,7 +129,12 @@ export default function App() {
               </div>
               <div className="stack">
                 <RepoConnect onConnected={() => setRepoRefreshKey((k) => k + 1)} />
-                <RepoList refreshKey={repoRefreshKey} onReviewStart={setActiveReview} />
+                <RepoList
+                  refreshKey={repoRefreshKey}
+                  onReviewStart={setActiveReview}
+                  onLoaded={handleRepos}
+                  expandRequest={expandRequest}
+                />
               </div>
             </section>
 
@@ -124,9 +145,15 @@ export default function App() {
               </div>
               <ReviewHistory onOpen={setActiveReview} refreshKey={repoRefreshKey} />
             </section>
-          </>
-        )}
-      </main>
+          </main>
+        </div>
+      ) : (
+        <main className="page">
+          {banners}
+          {onLanding && <Landing onLogin={login} />}
+          {checkingSession && <SessionCheck />}
+        </main>
+      )}
 
       <footer className="footer">
         {onLanding && (
