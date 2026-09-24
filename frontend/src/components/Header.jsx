@@ -16,10 +16,15 @@ const LANDING_NAV = [
 ]
 
 export default function Header() {
-  const { user, loading, login, logout, switchAccount, deleteAccount } = useAuth()
+  const { user, loading, returning, login, logout, switchAccount, deleteAccount } = useAuth()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const menuRef = useRef(null)
+
+  // The same condition App uses to decide the landing page is showing. The bar
+  // has to agree with it, or the page paints with its nav and its sign-in
+  // button missing while the session check is still outstanding.
+  const anonymous = !user && (!loading || !returning)
 
   useEffect(() => {
     if (!open) return undefined
@@ -65,7 +70,7 @@ export default function Header() {
   const onscreen = useRef(new Set())
 
   useEffect(() => {
-    if (user || loading || typeof IntersectionObserver === 'undefined') return undefined
+    if (!anonymous || typeof IntersectionObserver === 'undefined') return undefined
 
     const ids = LANDING_NAV.map(([id]) => id)
     const nodes = ids.map((id) => document.getElementById(id)).filter(Boolean)
@@ -97,7 +102,7 @@ export default function Header() {
       observer.disconnect()
       onscreen.current.clear()
     }
-  }, [user, loading])
+  }, [anonymous])
 
   const jump = (id) => (event) => {
     event.preventDefault()
@@ -125,7 +130,7 @@ export default function Header() {
           ))}
         </nav>
       ) : (
-        !loading && (
+        anonymous && (
           <nav className="topbar__nav" aria-label="Main">
             {LANDING_NAV.map(([id, label]) => (
               <a
@@ -143,7 +148,7 @@ export default function Header() {
 
       <div className="topbar__spacer" />
 
-      {loading ? null : user ? (
+      {user ? (
         <div className="account" ref={menuRef}>
           <button
             type="button"
@@ -193,7 +198,7 @@ export default function Header() {
             </div>
           )}
         </div>
-      ) : (
+      ) : anonymous ? (
         <button type="button" className="btn btn--primary" onClick={login}>
           <GithubMark size={14} />
           {/* The tail is dropped on a phone, where the full label pushed the
@@ -206,7 +211,7 @@ export default function Header() {
             Sign in<span className="topbar__cta-tail"> with GitHub</span>
           </span>
         </button>
-      )}
+      ) : null}
     </header>
   )
 }

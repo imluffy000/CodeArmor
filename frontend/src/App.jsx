@@ -52,7 +52,7 @@ function SessionCheck() {
 }
 
 export default function App() {
-  const { user, loading, error, login } = useAuth()
+  const { user, loading, returning, error, login } = useAuth()
   const [repoRefreshKey, setRepoRefreshKey] = useState(0)
   const [activeReview, setActiveReview] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -74,7 +74,12 @@ export default function App() {
     )
   }
 
-  const onLanding = !user && !loading
+  // The landing page is static and needs no session, so it paints immediately
+  // for anyone who was not signed in last time. Only a returning visitor waits
+  // on /auth/me, and only they would be jarred by seeing the marketing page
+  // for a moment before their dashboard replaces it.
+  const onLanding = !user && (!loading || !returning)
+  const checkingSession = loading && returning
 
   return (
     <div className="shell">
@@ -97,7 +102,7 @@ export default function App() {
 
         {onLanding && <Landing onLogin={login} />}
 
-        {loading && <SessionCheck />}
+        {checkingSession && <SessionCheck />}
 
         {user && (
           <>
